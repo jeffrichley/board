@@ -17,3 +17,16 @@ Then run `board` inside any git clone with `gh` authenticated.
 uv sync --group dev
 uv run pytest
 ```
+
+## Colors
+
+| Color | Meaning |
+|---|---|
+| Cyan | Lane headers |
+| Magenta | Map |
+| Blue | Build parent |
+| Green | Takeable |
+| Yellow | Claimed |
+| Red | Blocked |
+| Bright red / orange | P1 / P2 |
+| Bright green | ready-for-agent |

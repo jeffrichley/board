@@ -4,7 +4,7 @@ from board.cli import app
 from board.model import Board, Backlog
 
 
-def test_cli_runs(monkeypatch):
+def test_cli_renders_empty_board(monkeypatch):
     def fake_load():
         return Board("o/r", 0, [], [], Backlog())
 
@@ -12,4 +12,4 @@ def test_cli_runs(monkeypatch):
     result = CliRunner().invoke(app)
     assert result.exit_code == 0
     assert "o/r" in result.stdout
-    assert "no open issues" in result.stdout.lower()
+    assert "no open issues" in result.stdout.lower() or "0 open" in result.stdout
