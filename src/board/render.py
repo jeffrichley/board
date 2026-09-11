@@ -116,7 +116,7 @@ def render_board(board: Board, console: Console | None = None) -> None:
         console.print()
 
     b = board.backlog
-    if b.p1 or b.p2_debt or b.ready or b.other:
+    if b.p1 or b.p2_debt or b.ready or b.orphan_wayfinder or b.other:
         root = Tree(Text("BACKLOG", style="bold cyan"))
         if b.p1:
             sub = root.add(Text("P1", style="bold bright_red"))
@@ -138,6 +138,14 @@ def render_board(board: Board, console: Console | None = None) -> None:
             sub = root.add(Text("ready-for-agent", style="bold bright_green"))
             for issue in b.ready:
                 sub.add(Text(f"#{issue.number}  {short(issue.title, 56)}"))
+        if b.orphan_wayfinder:
+            sub = root.add(Text("orphan wayfinder", style="bold yellow"))
+            for issue in b.orphan_wayfinder:
+                line = Text(f"#{issue.number}  {short(issue.title, 56)}")
+                labs = _lbl(issue)
+                if labs:
+                    line.append(f"  {labs}", style="dim")
+                sub.add(line)
         if b.other:
             sub = root.add(Text("other", style="dim"))
             for issue in b.other:

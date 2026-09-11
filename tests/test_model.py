@@ -134,7 +134,17 @@ def test_claimed_and_orphan_wayfinder_in_backlog():
     ]
     board = build_board("o/r", issues, children_of={}, blockers_of={})
     assert board.maps == []
-    assert [i.number for i in board.backlog.other] == [5, 6]
+    assert [i.number for i in board.backlog.orphan_wayfinder] == [5]
+    assert [i.number for i in board.backlog.other] == [6]
+
+
+def test_orphan_wayfinder_beats_ready_bucket():
+    issues = [
+        _issue(7, "Lost grill", labels=["wayfinder:grilling", "ready-for-agent"]),
+    ]
+    board = build_board("o/r", issues, children_of={}, blockers_of={})
+    assert [i.number for i in board.backlog.orphan_wayfinder] == [7]
+    assert board.backlog.ready == []
 
 
 def test_map_not_duplicated_under_build_parent():
@@ -170,7 +180,14 @@ def test_map_not_duplicated_under_build_parent():
     assert 10 not in build_ticket_nums
     assert build_ticket_nums == set()
     assert [i.number for i in board.backlog.other] == [20]
-    assert 11 not in {i.number for i in board.backlog.p1 + board.backlog.p2_debt + board.backlog.ready + board.backlog.other}
+    assert 11 not in {
+        i.number
+        for i in board.backlog.p1
+        + board.backlog.p2_debt
+        + board.backlog.ready
+        + board.backlog.orphan_wayfinder
+        + board.backlog.other
+    }
 
 
 def test_backlog_buckets():

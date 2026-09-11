@@ -56,6 +56,7 @@ class Backlog:
     p1: list[Issue] = field(default_factory=list)
     p2_debt: list[Issue] = field(default_factory=list)
     ready: list[Issue] = field(default_factory=list)
+    orphan_wayfinder: list[Issue] = field(default_factory=list)
     other: list[Issue] = field(default_factory=list)
 
 
@@ -179,7 +180,9 @@ def _backlog_for(issues: list[Issue]) -> Backlog:
     b = Backlog()
     for i in sorted(issues, key=lambda x: x.number):
         labs = set(i.labels)
-        if "P1" in labs:
+        if any(lb.startswith("wayfinder:") for lb in i.labels):
+            b.orphan_wayfinder.append(i)
+        elif "P1" in labs:
             b.p1.append(i)
         elif "P2" in labs or "debt" in labs:
             b.p2_debt.append(i)
