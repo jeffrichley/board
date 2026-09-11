@@ -49,6 +49,8 @@ def _add_parent(tree: Tree, parent: ParentNode, title_style: str) -> None:
         style="dim",
     )
     node = tree.add(head)
+    if parent.note:
+        node.add(Text(parent.note, style="dim italic"))
     g = parent.group
     if g.takeable:
         sub = node.add(Text("TAKEABLE", style="bold green"))

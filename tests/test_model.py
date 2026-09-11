@@ -17,10 +17,12 @@ def _issue(
     kids_total: int = 0,
     kids_completed: int = 0,
     blocked_by: int = 0,
+    body: str | None = None,
 ) -> dict:
     return {
         "number": number,
         "title": title,
+        "body": body,
         "labels": [{"name": n} for n in (labels or [])],
         "assignee": {"login": assignee} if assignee else None,
         "sub_issues_summary": {"total": kids_total, "completed": kids_completed},
@@ -165,3 +167,56 @@ def test_backlog_buckets():
     assert [i.number for i in board.backlog.p2_debt] == [2]
     assert [i.number for i in board.backlog.ready] == [3]
     assert [i.number for i in board.backlog.other] == [4]
+
+
+def test_map_note_ready_for_spec_when_frontier_clear():
+    issues = [
+        _issue(2, "Map", labels=["wayfinder:map"], kids_total=2, kids_completed=2),
+    ]
+    board = build_board("o/r", issues, children_of={2: []}, blockers_of={})
+    assert board.maps[0].note == "frontier clear — ready for /to-spec"
+
+
+def test_map_note_ready_to_close_when_part_of_spec_exists():
+    issues = [
+        _issue(2, "Map", labels=["wayfinder:map"], kids_total=2, kids_completed=2),
+        _issue(
+            29,
+            "Spec: characters cannot converge",
+            labels=["ready-for-agent"],
+            kids_total=1,
+            kids_completed=0,
+            body="Part of #2\n## Problem Statement\n…",
+        ),
+        _issue(31, "First ticket", labels=["ready-for-agent"], body="Part of #29"),
+    ]
+    board = build_board(
+        "o/r",
+        issues,
+        children_of={29: [31]},
+        blockers_of={},
+    )
+    assert board.maps[0].note is not None
+    assert board.maps[0].note.startswith("ready to close — open build:")
+    assert "#29" in board.maps[0].note
+    assert board.maps[0].group.takeable == []
+    assert [p.issue.number for p in board.builds] == [29]
+
+
+def test_map_note_ready_to_close_when_spec_is_sub_issue():
+    issues = [
+        _issue(2, "Map", labels=["wayfinder:map"], kids_total=3, kids_completed=2),
+        _issue(29, "Spec: done planning", kids_total=1, kids_completed=0),
+        _issue(31, "Ticket"),
+    ]
+    board = build_board(
+        "o/r",
+        issues,
+        children_of={2: [29], 29: [31]},
+        blockers_of={},
+    )
+    # #29 is child of map but also a build root — skipped as map ticket
+    assert board.maps[0].note is not None
+    assert "ready to close" in board.maps[0].note
+    assert "#29" in board.maps[0].note
+

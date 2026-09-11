@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 
 MAP_LABEL = "wayfinder:map"
+PART_OF_RE = re.compile(r"(?i)\bPart of #(\d+)\b")
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ class ParentNode:
     group: TicketGroup
     edges: dict[int, list[int]]  # child -> open blockers
     blocks: dict[int, list[int]]  # blocker -> children it blocks
+    note: str | None = None
 
 
 @dataclass
@@ -67,6 +70,49 @@ class Board:
 
 def labels_of(raw: dict) -> list[str]:
     return [lb["name"] for lb in raw.get("labels", [])]
+
+
+def parse_part_of(body: str | None) -> int | None:
+    """First `Part of #N` in the body, if any (map/spec parent convention)."""
+    if not body:
+        return None
+    m = PART_OF_RE.search(body)
+    return int(m.group(1)) if m else None
+
+
+def _group_empty(group: TicketGroup) -> bool:
+    return not (group.takeable or group.claimed or group.blocked)
+
+
+def _map_note(
+    map_num: int,
+    group: TicketGroup,
+    *,
+    children_of: dict[int, list[int]],
+    build_nums: set[int],
+    by_num: dict[int, Issue],
+    issues: list[dict],
+) -> str | None:
+    """Status under a map with no open decision tickets left."""
+    if not _group_empty(group):
+        return None
+    related: list[Issue] = []
+    seen: set[int] = set()
+    for n in children_of.get(map_num, []):
+        if n in build_nums and n not in seen:
+            related.append(by_num[n])
+            seen.add(n)
+    for raw in issues:
+        n = raw["number"]
+        if n not in build_nums or n in seen:
+            continue
+        if parse_part_of(raw.get("body")) == map_num:
+            related.append(by_num[n])
+            seen.add(n)
+    if related:
+        bits = ", ".join(f"#{b.number} {short(b.title, 40)}" for b in related)
+        return f"ready to close — open build: {bits}"
+    return "frontier clear — ready for /to-spec"
 
 
 def short(text: str, n: int) -> str:
@@ -159,22 +205,25 @@ def build_board(
     maps_raw = [i for i in issues if MAP_LABEL in labels_of(i)]
     map_nums = {i["number"] for i in maps_raw}
 
-    # Anyone listed as an open child of anyone
-    is_child: set[int] = set()
-    for kids in children_of.values():
-        is_child.update(n for n in kids if n in open_nums)
+    # Anyone listed as an open child of a non-map parent cannot be a BUILD root
+    # (nested under a spec). Children of maps may still be BUILD roots (spec handoff).
+    is_child_of_non_map: set[int] = set()
+    for parent, kids in children_of.items():
+        if parent in map_nums:
+            continue
+        is_child_of_non_map.update(n for n in kids if n in open_nums)
 
-    # Candidate build parents: open, have open children, not maps, not children
+    # Candidate build parents: open, have open children, not maps, not nested under a build
     build_nums: set[int] = set()
     for num, kids in children_of.items():
-        if num not in open_nums or num in map_nums or num in is_child:
+        if num not in open_nums or num in map_nums or num in is_child_of_non_map:
             continue
         if any(k in open_nums for k in kids):
             build_nums.add(num)
 
     placed: set[int] = set(map_nums) | set(build_nums)
 
-    def make_parent(num: int) -> ParentNode:
+    def make_parent(num: int, note: str | None = None) -> ParentNode:
         child_nums = [k for k in children_of.get(num, []) if k in open_nums and k not in placed]
         placed.update(child_nums)
         tickets = [by_num[k] for k in child_nums]
@@ -203,9 +252,28 @@ def build_board(
                 )
             )
         group = _group_tickets(adjusted, edges, dict(blocks))
-        return ParentNode(issue=by_num[num], group=group, edges=edges, blocks=dict(blocks))
+        return ParentNode(
+            issue=by_num[num],
+            group=group,
+            edges=edges,
+            blocks=dict(blocks),
+            note=note,
+        )
 
-    maps = [make_parent(i["number"]) for i in sorted(maps_raw, key=lambda x: x["number"])]
+    maps: list[ParentNode] = []
+    for i in sorted(maps_raw, key=lambda x: x["number"]):
+        node = make_parent(i["number"])
+        note = _map_note(
+            i["number"],
+            node.group,
+            children_of=children_of,
+            build_nums=build_nums,
+            by_num=by_num,
+            issues=issues,
+        )
+        if note:
+            node.note = note
+        maps.append(node)
     builds = [make_parent(n) for n in sorted(build_nums)]
 
     leftover = [by_num[n] for n in sorted(open_nums - placed)]
