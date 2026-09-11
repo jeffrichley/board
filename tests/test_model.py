@@ -117,6 +117,42 @@ def test_claimed_and_orphan_wayfinder_in_backlog():
     assert [i.number for i in board.backlog.other] == [5, 6]
 
 
+def test_map_not_duplicated_under_build_parent():
+    """A map listed as a BUILD child appears only as a map root, not in BUILD tickets."""
+    issues = [
+        _issue(1, "Build", kids_total=2, kids_completed=0),
+        _issue(10, "Map", labels=["wayfinder:map"], kids_total=1, kids_completed=0),
+        _issue(11, "Map child", labels=["wayfinder:grilling"]),
+        _issue(20, "Plain"),
+    ]
+    board = build_board(
+        "o/r",
+        issues,
+        children_of={1: [10], 10: [11]},
+        blockers_of={},
+    )
+    assert len(board.maps) == 1
+    assert board.maps[0].issue.number == 10
+    map_ticket_nums = {
+        t.number
+        for t in board.maps[0].group.takeable
+        + board.maps[0].group.claimed
+        + board.maps[0].group.blocked
+    }
+    assert map_ticket_nums == {11}
+    assert len(board.builds) == 1
+    build_ticket_nums = {
+        t.number
+        for t in board.builds[0].group.takeable
+        + board.builds[0].group.claimed
+        + board.builds[0].group.blocked
+    }
+    assert 10 not in build_ticket_nums
+    assert build_ticket_nums == set()
+    assert [i.number for i in board.backlog.other] == [20]
+    assert 11 not in {i.number for i in board.backlog.p1 + board.backlog.p2_debt + board.backlog.ready + board.backlog.other}
+
+
 def test_backlog_buckets():
     issues = [
         _issue(1, "p1", labels=["debt", "P1"]),

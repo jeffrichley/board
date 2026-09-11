@@ -175,7 +175,7 @@ def build_board(
     placed: set[int] = set(map_nums) | set(build_nums)
 
     def make_parent(num: int) -> ParentNode:
-        child_nums = [k for k in children_of.get(num, []) if k in open_nums]
+        child_nums = [k for k in children_of.get(num, []) if k in open_nums and k not in placed]
         placed.update(child_nums)
         tickets = [by_num[k] for k in child_nums]
         edges: dict[int, list[int]] = {}
