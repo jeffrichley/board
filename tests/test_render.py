@@ -34,6 +34,8 @@ def test_render_includes_lanes_and_colors():
     assert "#10" in text and "The Map" in text
     assert "TAKEABLE" in text and "#11" in text
     assert "BLOCKED" in text and "#12" in text
+    assert "<- #11" in text
+    assert "<- #11 <-" not in text  # no transitive tail
     assert "BACKLOG" in text and "P1" in text and "#20" in text
-    html = console.export_html()
+    html = console.export_html(clear=False)
     assert "WAYFINDING" in html

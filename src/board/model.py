@@ -132,26 +132,23 @@ def unblock_count(num: int, blocks: dict[int, list[int]]) -> int:
     return len(seen)
 
 
-def blocker_chain(
-    num: int,
-    edges: dict[int, list[int]],
-    depth: int = 0,
-    seen: frozenset[int] = frozenset(),
-) -> str:
-    direct = [b for b in edges.get(num, []) if b not in seen]
-    if not direct or depth >= 4:
-        return ""
-    here = ", ".join(f"#{b}" for b in direct)
-    seen = seen | {num} | set(direct)
-    deeper = {b for d in direct for b in edges.get(d, []) if b not in seen}
-    tail = ""
-    if deeper:
-        nxt = sorted(deeper)
-        tail = " <- " + ", ".join(f"#{b}" for b in nxt)
-        if any(edges.get(b) for b in nxt) and depth + 2 < 4:
-            tail += " <- …"
-    return f"<- {here}{tail}"
+def direct_blockers(num: int, edges: dict[int, list[int]]) -> list[int]:
+    """Open issues that directly block `num` (no transitive chain)."""
+    return list(edges.get(num, []))
 
+
+def blocker_status(num: int, parent: ParentNode) -> str:
+    """How a direct blocker should read: takeable | claimed | blocked."""
+    if parent.edges.get(num):
+        return "blocked"
+    if any(t.number == num for t in parent.group.claimed):
+        return "claimed"
+    if any(t.number == num for t in parent.group.takeable):
+        return "takeable"
+    if any(t.number == num for t in parent.group.blocked):
+        return "blocked"
+    # Outside this parent's groups but no open edge recorded → treat as live
+    return "takeable"
 
 def _group_tickets(
     tickets: list[Issue],

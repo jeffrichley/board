@@ -4,7 +4,15 @@ from rich.console import Console
 from rich.tree import Tree
 from rich.text import Text
 
-from board.model import Board, Issue, ParentNode, blocker_chain, short, unblock_count
+from board.model import (
+    Board,
+    Issue,
+    ParentNode,
+    blocker_status,
+    direct_blockers,
+    short,
+    unblock_count,
+)
 
 
 def _lbl(issue: Issue) -> str:
@@ -14,6 +22,25 @@ def _lbl(issue: Issue) -> str:
         if lb.startswith(("ready", "wayfinder", "debt", "P", "bug", "enhancement"))
     ]
     return ",".join(keep)
+
+
+_BLOCKER_STYLE = {
+    "takeable": "green",
+    "claimed": "yellow",
+    "blocked": "red",
+}
+
+
+def _blocker_line(issue: Issue, parent: ParentNode) -> Text:
+    blockers = direct_blockers(issue.number, parent.edges)
+    if not blockers:
+        return Text()
+    line = Text("  <- ", style="dim")
+    for i, b in enumerate(blockers):
+        if i:
+            line.append(", ", style="dim")
+        line.append(f"#{b}", style=_BLOCKER_STYLE[blocker_status(b, parent)])
+    return line
 
 
 def _ticket_line(issue: Issue, *, kind: str, parent: ParentNode | None = None) -> Text:
@@ -33,9 +60,7 @@ def _ticket_line(issue: Issue, *, kind: str, parent: ParentNode | None = None) -
         who = issue.assignee or "?"
         extra.append(f"  @{who}", style="yellow")
     elif kind == "blocked" and parent is not None:
-        chain = blocker_chain(issue.number, parent.edges)
-        if chain:
-            extra.append(f"  {chain}", style="red dim")
+        extra.append_text(_blocker_line(issue, parent))
     t.append(extra)
     return t
 

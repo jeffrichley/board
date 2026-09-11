@@ -1,8 +1,7 @@
 from board.model import (
-    Backlog,
-    Board,
-    blocker_chain,
+    blocker_status,
     build_board,
+    direct_blockers,
     short,
     unblock_count,
 )
@@ -42,9 +41,28 @@ def test_unblock_count_transitive():
     assert unblock_count(3, blocks) == 0
 
 
-def test_blocker_chain():
+def test_direct_blockers_only():
     edges = {3: [2], 2: [1]}
-    assert blocker_chain(3, edges) == "<- #2 <- #1"
+    assert direct_blockers(3, edges) == [2]
+    assert direct_blockers(2, edges) == [1]
+    assert direct_blockers(1, edges) == []
+
+
+def test_blocker_status_colors_by_liveness():
+    from board.model import Issue, ParentNode, TicketGroup
+
+    takeable = Issue(31, "A", (), None, 0, 0, 0)
+    claimed = Issue(32, "B", (), "jeff", 0, 0, 0)
+    blocked = Issue(36, "C", (), None, 0, 0, 1)
+    parent = ParentNode(
+        issue=Issue(29, "Spec", (), None, 0, 3, 0),
+        group=TicketGroup(takeable=[takeable], claimed=[claimed], blocked=[blocked]),
+        edges={36: [35], 37: [31, 32, 36]},
+        blocks={},
+    )
+    assert blocker_status(31, parent) == "takeable"
+    assert blocker_status(32, parent) == "claimed"
+    assert blocker_status(36, parent) == "blocked"
 
 
 def test_map_with_nested_tickets_not_in_backlog():
