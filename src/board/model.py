@@ -75,7 +75,7 @@ def labels_of(raw: dict[str, Any]) -> list[str]:
 
 
 def parse_part_of(body: str | None) -> int | None:
-    """First `Part of #N` in the body, if any (map/spec parent convention)."""
+    """First `Part of #N` in the body, if any (map/spec convention)."""
     if not body:
         return None
     m = PART_OF_RE.search(body)
@@ -215,7 +215,7 @@ def build_board(
             continue
         is_child_of_non_map.update(n for n in kids if n in open_nums)
 
-    # Candidate spec parents: open, have open children, not maps,
+    # Candidate specs: open, have open children, not maps,
     # not nested under a spec
     spec_nums: set[int] = set()
     for num, kids in children_of.items():

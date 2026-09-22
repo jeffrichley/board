@@ -94,8 +94,8 @@ def test_map_with_nested_tickets_not_in_backlog() -> None:
     assert board.specs == []
 
 
-def test_spec_parent_vs_nested_parent() -> None:
-    """A parent that is itself a child is not a SPECS root."""
+def test_nested_parent_is_not_a_spec() -> None:
+    """A ticket that is itself a child of another ticket is not a spec."""
     issues = [
         _issue(1, "Spec", kids_total=2, kids_completed=1),
         _issue(2, "Child parent", kids_total=1, kids_completed=0),
@@ -154,7 +154,7 @@ def test_orphan_wayfinder_beats_ready_bucket() -> None:
     assert board.backlog.ready == []
 
 
-def test_map_not_duplicated_under_spec_parent() -> None:
+def test_map_not_duplicated_under_a_spec() -> None:
     """A map listed as a SPECS child is only a map root, not a spec ticket."""
     issues = [
         _issue(1, "Spec", kids_total=2, kids_completed=0),

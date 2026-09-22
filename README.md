@@ -24,7 +24,7 @@ uv run pytest
 |---|---|
 | Cyan | Lane headers |
 | Magenta | Map |
-| Blue | Spec parent |
+| Blue | Spec |
 | Green | Takeable |
 | Yellow | Claimed |
 | Red | Blocked |
