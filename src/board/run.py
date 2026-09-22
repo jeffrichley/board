@@ -19,16 +19,13 @@ class Result:
 
 
 class Runner(Protocol):
-    def __call__(self, args: list[str], *, capture: bool = True) -> Result:
-        """Run a command, program first. `capture=False` leaves it the terminal."""
+    def __call__(self, args: list[str]) -> Result:
+        """Run a command, program first, capturing its output."""
         ...
 
 
-def default_runner(args: list[str], *, capture: bool = True) -> Result:
+def default_runner(args: list[str]) -> Result:
     try:
-        if not capture:
-            r = subprocess.run(args)
-            return Result(r.returncode, "", "")
         out = subprocess.run(args, capture_output=True, text=True)
         return Result(out.returncode, out.stdout, out.stderr)
     except FileNotFoundError:

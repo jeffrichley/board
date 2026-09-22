@@ -35,10 +35,10 @@ class Session:
 
 
 def start_session(number: int, *, runner: Runner) -> Session:
-    """Make the worktree for `number`, open its window, and attach to it."""
+    """Make the worktree for `number` and open its window. Board never attaches."""
 
-    def run(*args: str, capture: bool = True) -> Result:
-        return runner(list(args), capture=capture)
+    def run(*args: str) -> Result:
+        return runner(list(args))
 
     def must(*args: str, why: str) -> Result:
         r = run(*args)
@@ -94,5 +94,4 @@ def start_session(number: int, *, runner: Runner) -> Session:
         raise WorkError(
             f"could not open the tmux window for #{number}\n{window.stderr.strip()}"
         )
-    run("tmux", "attach-session", "-t", session.target, capture=False)
     return session

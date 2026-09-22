@@ -29,7 +29,6 @@ NEW_WINDOW = [
     *["tmux", "new-window", "-t", "board"],
     *["-n", "#8", "-c", WORKTREE, CLAUDE],
 ]
-ATTACH = ["tmux", "attach-session", "-t", "board:#8"]
 REMOVE = ["git", "worktree", "remove", "--force", WORKTREE]
 
 TOOLS: World = {
@@ -48,12 +47,10 @@ REPO: World = {
 RUNNING_SESSION: World = {
     tuple(HAS_SESSION): (0, "", ""),
     tuple(NEW_WINDOW): (0, "", ""),
-    tuple(ATTACH): (0, "", ""),
 }
 NO_SESSION: World = {
     tuple(HAS_SESSION): (1, "", "no server running"),
     tuple(NEW_SESSION): (0, "", ""),
-    tuple(ATTACH): (0, "", ""),
 }
 
 
@@ -62,7 +59,7 @@ def _work(run: FakeRun, monkeypatch: pytest.MonkeyPatch, *args: str) -> CliResul
     return CliRunner().invoke(app, ["work", *(args or ("8",))])
 
 
-def test_work_makes_the_worktree_then_the_tmux_session_then_attaches(
+def test_work_makes_the_worktree_then_the_tmux_session_and_stops_there(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run = FakeRun({**TOOLS, **TICKET, **REPO, **NO_SESSION})
@@ -79,7 +76,6 @@ def test_work_makes_the_worktree_then_the_tmux_session_then_attaches(
         ADD,
         HAS_SESSION,
         NEW_SESSION,
-        ATTACH,
     ]
 
 
@@ -100,18 +96,29 @@ def test_work_opens_a_window_when_the_repo_session_is_already_running(
         ADD,
         HAS_SESSION,
         NEW_WINDOW,
-        ATTACH,
     ]
 
 
-def test_work_attaches_without_capturing_the_terminal(
+def test_work_says_where_the_session_is_and_leaves_you_at_your_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run = FakeRun({**TOOLS, **TICKET, **REPO, **RUNNING_SESSION})
-    _work(run, monkeypatch)
+    result = _work(run, monkeypatch)
 
-    assert run.captures[-1] is False
-    assert all(run.captures[:-1])
+    assert result.exit_code == 0
+    assert result.output == f"#8  started in {WORKTREE}   tmux board:#8\n"
+
+
+def test_work_does_the_same_from_inside_tmux(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TMUX", "/tmp/tmux-501/default,1234,0")
+    run = FakeRun({**TOOLS, **TICKET, **REPO, **RUNNING_SESSION})
+    result = _work(run, monkeypatch)
+
+    assert result.exit_code == 0
+    assert result.output == f"#8  started in {WORKTREE}   tmux board:#8\n"
+    assert run.calls[-1] == NEW_WINDOW
 
 
 def test_work_reports_a_missing_tmux_before_creating_anything(
@@ -187,7 +194,6 @@ def test_work_puts_the_worktree_back_when_the_tmux_window_fails(
     assert result.exit_code == 1
     assert "can't find session" in result.output
     assert run.calls[-1] == REMOVE
-    assert ATTACH not in run.calls
 
 
 def test_work_says_so_when_a_tool_is_on_path_but_broken(
@@ -216,7 +222,6 @@ def _launching(number: int, start: str) -> tuple[World, list[str]]:
         ("git", "worktree", "add", "--detach", worktree, "origin/main"): (0, "", ""),
         tuple(HAS_SESSION): (1, "", "no server running"),
         tuple(new_session): (0, "", ""),
-        ("tmux", "attach-session", "-t", f"board:#{number}"): (0, "", ""),
     }
     return world, new_session
 
