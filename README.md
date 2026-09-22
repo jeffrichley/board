@@ -43,7 +43,16 @@ Board doesn't attach you to the session. It says where it is, in one line:
 #120  started in /repos/board.worktrees/120   tmux board:#120
 ```
 
-so you can start another ticket straight away. To reach and end sessions (with
+so you can start another ticket straight away.
+
+Run `board work <n>` again on a ticket that already has a worktree and it goes
+back to that session rather than starting a second, even once the agent has
+claimed the ticket. If the ticket's window is still open, board creates nothing
+and says `#120  running in …`. If the window is gone, board opens a new `#120`
+window in the worktree running `claude --dangerously-skip-permissions --continue`
+and says `#120  resumed in …`.
+
+To reach and end sessions (with
 `board` standing for your repo's name):
 
 | To | Run |
