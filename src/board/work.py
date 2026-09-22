@@ -1,7 +1,8 @@
 """Start a session on each ticket: a worktree, a tmux window, and Claude Code in it.
 
 A ticket that already has a worktree has a session, so board goes back to that
-one instead of starting a second. Board neither claims the ticket nor creates a
+one instead of starting a second. A map gets one session at a time: before
+starting another on it, board asks. Board neither claims the ticket nor creates a
 branch. The agent does both. Each ticket in a batch stands alone: one that can't
 start is skipped with its reason, and the others still start.
 """
@@ -9,14 +10,15 @@ start is skipped with its reason, and the others still start.
 from __future__ import annotations
 
 import shlex
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
 from board.gh import GhClient
 from board.load import load_board
-from board.route import Refused, starting_command
+from board.model import Board, Issue
+from board.route import Refused, map_children, map_of, starting_command
 from board.run import Result, Runner
 from board.worktree import live_windows, worktree_paths
 
@@ -54,8 +56,56 @@ class Skipped:
     reason: str
 
 
+def _in_progress(ticket: Issue, *, has_worktree: bool) -> list[str]:
+    """Why `ticket` counts as work in progress, if it does."""
+    n = ticket.number
+    return [
+        *([f"#{n} has a worktree"] if has_worktree else []),
+        *([f"#{n} is claimed by @{ticket.assignee}"] if ticket.assignee else []),
+    ]
+
+
+def _one_session_per_map(
+    board: Board,
+    commands: dict[int, str | Refused],
+    *,
+    has_worktree: Callable[[int], bool],
+    confirm: Callable[[str], bool],
+) -> dict[int, str | Refused]:
+    """`commands`, with each start you declined on a busy map refused instead.
+
+    Parallel sessions on one map share no context and ask the same questions
+    twice, so a second one starts only if you say so. A spec's children are
+    sliced to run side by side, so they're never asked about.
+    """
+    out = dict(commands)
+    starting: dict[int, list[int]] = {}  # map -> its tickets starting in this call
+    for n, command in commands.items():
+        node = map_of(board, n)
+        if node is None or isinstance(command, Refused):
+            continue
+        m = node.issue.number
+        # The map's worktree is a session on it, but its claim doesn't count: a
+        # map is often assigned to its owner for as long as it's open.
+        busy = [f"#{m} has a worktree"] if m != n and has_worktree(m) else []
+        busy += [
+            why
+            for t in map_children(node)
+            if t.number != n
+            for why in _in_progress(t, has_worktree=has_worktree(t.number))
+        ]
+        busy += [f"#{t} is starting in this call" for t in starting.get(m, [])]
+        if busy:
+            why = f"already has work in progress: {'; '.join(busy)}."
+            if not confirm(f"Map #{m} {why} Start #{n} too?"):
+                out[n] = Refused(f"map #{m} {why}")
+                continue
+        starting.setdefault(m, []).append(n)
+    return out
+
+
 def start_sessions(
-    numbers: Sequence[int], *, runner: Runner
+    numbers: Sequence[int], *, runner: Runner, confirm: Callable[[str], bool]
 ) -> list[Session | Skipped]:
     """Start a session on each of `numbers`, or go back to the one it has.
 
@@ -63,6 +113,9 @@ def start_sessions(
     `origin/main`) is checked once, and its failure raises `WorkError` before
     any session is touched. Board never attaches: it opens what's missing and
     says where each session is.
+
+    `confirm` is asked, before anything is created, whether to start a session
+    on a map that already has work in progress; a no skips that ticket.
     """
 
     def run(*args: str) -> Result:
@@ -87,12 +140,12 @@ def start_sessions(
     root = Path(
         must("git", "rev-parse", "--show-toplevel", why="not a git repo").stdout.strip()
     )
+
+    def tree(n: int) -> Path:
+        return root.parent / f"{root.name}.worktrees" / str(n)
+
     sessions = {
-        n: Session(
-            number=n,
-            worktree=root.parent / f"{root.name}.worktrees" / str(n),
-            tmux_session=root.name,
-        )
+        n: Session(number=n, worktree=tree(n), tmux_session=root.name)
         for n in dict.fromkeys(numbers)
     }
 
@@ -108,6 +161,12 @@ def start_sessions(
     if new:
         board = load_board(GhClient(runner=runner))
         commands = {n: starting_command(board, n) for n in new}
+        commands = _one_session_per_map(
+            board,
+            commands,
+            has_worktree=lambda t: tree(t) in existing,
+            confirm=confirm,
+        )
     if any(isinstance(c, str) for c in commands.values()):
         must("git", "fetch", "origin", why="could not fetch origin")
         if run("git", "rev-parse", "--verify", "origin/main").returncode != 0:

@@ -30,13 +30,23 @@ def main(ctx: typer.Context) -> None:
 
 
 @app.command()
-def work(numbers: list[int]) -> None:
+def work(
+    numbers: list[int],
+    yes: bool = typer.Option(
+        False, "--yes", help="Start a second session on a map without asking."
+    ),
+) -> None:
     """Start a Claude Code session on each ticket, or go back to the one it has.
 
-    Exits non-zero if any ticket was skipped.
+    Before a second session on one map, asks [y/N]. Exits non-zero if any ticket
+    was skipped.
     """
+
+    def confirm(question: str) -> bool:
+        return yes or typer.confirm(question, default=False)
+
     try:
-        outcomes = start_sessions(numbers, runner=default_runner)
+        outcomes = start_sessions(numbers, runner=default_runner, confirm=confirm)
     except (WorkError, GhError) as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e

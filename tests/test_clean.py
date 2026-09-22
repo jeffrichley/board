@@ -3,17 +3,10 @@ import json
 import pytest
 from typer.testing import Result as CliResult
 
-from helpers import FETCH, REPO_VIEW, SLUG, FakeRun, World, invoke, tree
+from helpers import FETCH, REPO_VIEW, SLUG, FakeRun, World, invoke, porcelain, tree
 
 LIST = ["git", "worktree", "list", "--porcelain"]
 WINDOWS = ["tmux", "list-windows", "-t", "=board", "-F", "#{window_name}"]
-
-
-def _porcelain(*paths: str) -> str:
-    """`git worktree list --porcelain` for the main checkout and these worktrees."""
-    main = "worktree /repos/board\nHEAD abc\nbranch refs/heads/main\n\n"
-    rest = "".join(f"worktree {p}\nHEAD def\ndetached\n\n" for p in paths)
-    return main + rest
 
 
 def _status(name: int | str) -> list[str]:
@@ -43,7 +36,7 @@ def _world(
     world: World = {
         tuple(LIST): (
             0,
-            _porcelain(*(f"/repos/board.worktrees/{n}" for n in numbers)),
+            porcelain(*(f"/repos/board.worktrees/{n}" for n in numbers)),
             "",
         ),
         tuple(FETCH): (0, "", ""),
@@ -126,7 +119,7 @@ def test_clean_judges_each_worktree_on_its_own(
 def test_clean_with_no_worktrees_says_so_and_asks_nothing_else(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = FakeRun({tuple(LIST): (0, _porcelain(), "")})
+    run = FakeRun({tuple(LIST): (0, porcelain(), "")})
     result = _clean(run, monkeypatch)
 
     assert result.exit_code == 0
@@ -137,7 +130,7 @@ def test_clean_with_no_worktrees_says_so_and_asks_nothing_else(
 def test_clean_leaves_worktrees_board_did_not_make_alone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = FakeRun({tuple(LIST): (0, _porcelain("/elsewhere/spike"), "")})
+    run = FakeRun({tuple(LIST): (0, porcelain("/elsewhere/spike"), "")})
     result = _clean(run, monkeypatch)
 
     assert result.exit_code == 0
@@ -220,7 +213,7 @@ def test_clean_keeps_a_worktree_not_named_for_a_ticket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     world: World = {
-        tuple(LIST): (0, _porcelain("/repos/board.worktrees/spike"), ""),
+        tuple(LIST): (0, porcelain("/repos/board.worktrees/spike"), ""),
         tuple(FETCH): (0, "", ""),
         tuple(WINDOWS): (1, "", "no server running"),
         tuple(_status("spike")): (0, "", ""),

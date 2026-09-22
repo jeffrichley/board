@@ -1,4 +1,5 @@
 import shlex
+from typing import Any
 
 import pytest
 from typer.testing import Result as CliResult
@@ -11,6 +12,7 @@ from helpers import (
     World,
     gh_world,
     invoke,
+    porcelain,
     raw_issue,
     tree,
 )
@@ -57,8 +59,8 @@ TOOLS: World = {
 TICKET: World = gh_world(raw_issue(8, "ready-for-agent"))
 LOOK = [REPO_VIEW, OPEN_ISSUES]
 # git's own listing, as `git worktree list --porcelain` prints it.
-MAIN_ONLY = f"worktree {ROOT}\nHEAD abc123\nbranch refs/heads/main\n\n"
-WITH_8 = f"{MAIN_ONLY}worktree /repos/board.worktrees/8\nHEAD abc123\ndetached\n\n"
+MAIN_ONLY = porcelain()
+WITH_8 = porcelain(tree(8))
 # A clone with no worktree for the ticket yet.
 CHECKOUT: World = {
     tuple(TOPLEVEL): (0, f"{ROOT}\n", ""),
@@ -80,8 +82,13 @@ NO_SESSION: World = {
 }
 
 
-def _work(run: FakeRun, monkeypatch: pytest.MonkeyPatch, *args: str) -> CliResult:
-    return invoke(run, monkeypatch, "work", *(args or ("8",)))
+def _work(
+    run: FakeRun,
+    monkeypatch: pytest.MonkeyPatch,
+    *args: str,
+    typed: str | None = None,
+) -> CliResult:
+    return invoke(run, monkeypatch, "work", *(args or ("8",)), typed=typed)
 
 
 def test_work_makes_the_worktree_then_the_tmux_session_and_stops_there(
@@ -254,18 +261,30 @@ def _looked_only(run: FakeRun) -> bool:
     return all(c in reads or c[0] == "gh" for c in run.calls)
 
 
-# A map #10 with children #11 and #12, a spec #20 with child #21, a backlog
-# ticket #30, and an orphan wayfinder ticket #40.
-BOARD: World = gh_world(
-    raw_issue(10, "wayfinder:map"),
-    raw_issue(11, "wayfinder:grilling"),
-    raw_issue(12, "wayfinder:grilling"),
-    raw_issue(20),
-    raw_issue(21),
-    raw_issue(30),
-    raw_issue(40, "wayfinder:grilling"),
-    children={10: [11, 12], 20: [21]},
-)
+def _board(*swapped: dict[str, Any]) -> World:
+    """A map #10 with children #11 and #12, a spec #20 with children #21 and #22,
+    a backlog ticket #30, and an orphan wayfinder ticket #40.
+
+    Each of `swapped` replaces the ticket with its number.
+    """
+    tickets = {
+        n: raw_issue(n, *labels)
+        for n, labels in [
+            (10, ["wayfinder:map"]),
+            (11, ["wayfinder:grilling"]),
+            (12, ["wayfinder:grilling"]),
+            (20, []),
+            (21, []),
+            (22, []),
+            (30, []),
+            (40, ["wayfinder:grilling"]),
+        ]
+    }
+    tickets.update({t["number"]: t for t in swapped})
+    return gh_world(*tickets.values(), children={10: [11, 12], 20: [21, 22]})
+
+
+BOARD: World = _board()
 
 
 @pytest.mark.parametrize(
@@ -486,17 +505,27 @@ def _add(number: int) -> list[str]:
     return ["git", "worktree", "add", "--detach", tree(number), "origin/main"]
 
 
-def _batch(*numbers: int) -> World:
-    """A clone and a running repo session in which each of `numbers` can start."""
+def _batch(*tickets: int | tuple[int, str]) -> World:
+    """A clone and a running repo session in which each ticket can start.
+
+    A ticket is a backlog ticket's number, or a (number, starting command) pair.
+    """
     world: World = {
         **CHECKOUT,
         tuple(FETCH): (0, "", ""),
         tuple(VERIFY): (0, "abc123\n", ""),
         tuple(HAS_SESSION): (0, "", ""),
     }
-    for n in numbers:
+    for t in tickets:
+        n, start = (
+            t if isinstance(t, tuple) else (t, f"/mattpocock-skills:implement {t}")
+        )
         world[tuple(_add(n))] = (0, "", "")
-        world[tuple(_window(n))] = (0, "", "")
+        world[tuple(_opens(n, start, ["tmux", "new-window", "-t", "=board"]))] = (
+            0,
+            "",
+            "",
+        )
     return world
 
 
@@ -634,3 +663,174 @@ def test_work_on_a_batch_opens_the_repo_session_for_the_first_ticket_and_joins_i
     assert result.exit_code == 0, result.output
     opened = [c for c in run.calls if c[1] in ("new-session", "new-window")]
     assert opened == [first, _window(9)]
+
+
+MAP_11 = (11, "/mattpocock-skills:wayfinder 10 11")
+MAP_12 = (12, "/mattpocock-skills:wayfinder 10 12")
+ASKS = "[y/N]"
+
+
+def test_work_asks_before_a_second_session_on_a_map_whose_child_has_a_worktree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_board(),
+            **_batch(MAP_12),
+            tuple(WORKTREES): (0, porcelain(tree(11)), ""),
+        }
+    )
+    result = _work(run, monkeypatch, "12", typed="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Map #10 already has work in progress: #11 has a worktree." in result.output
+    assert ASKS in result.output
+    assert _line(12, "started") in result.output
+
+
+def test_work_asks_before_a_session_on_a_map_whose_child_is_claimed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = _board(raw_issue(11, assignee="alice"))
+    run = FakeRun({**TOOLS, **world, **_batch(MAP_12)})
+    result = _work(run, monkeypatch, "12", typed="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "#11 is claimed by @alice" in result.output
+    assert _line(12, "started") in result.output
+
+
+def test_work_asks_before_a_session_on_a_map_itself_while_a_child_has_a_worktree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    start = (10, "/mattpocock-skills:wayfinder 10")
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_board(),
+            **_batch(start),
+            tuple(WORKTREES): (0, porcelain(tree(12)), ""),
+        }
+    )
+    result = _work(run, monkeypatch, "10", typed="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "#12 has a worktree" in result.output
+    assert _line(10, "started") in result.output
+
+
+def test_work_asks_before_the_second_of_two_tickets_in_one_call_on_the_same_map(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **_board(), **_batch(MAP_11, MAP_12)})
+    result = _work(run, monkeypatch, "11", "12", typed="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert result.output.count(ASKS) == 1
+    assert "#11 is starting in this call" in result.output
+    assert _line(11, "started") in result.output
+    assert _line(12, "started") in result.output
+
+
+@pytest.mark.parametrize("typed", ["n\n", "\n"], ids=["n", "enter"])
+def test_work_skips_the_second_session_on_a_map_unless_you_say_yes(
+    monkeypatch: pytest.MonkeyPatch, typed: str
+) -> None:
+    run = FakeRun({**TOOLS, **CHECKOUT, **_board(raw_issue(11, assignee="alice"))})
+    result = _work(run, monkeypatch, "12", typed=typed)
+
+    assert result.exit_code == 1
+    assert (
+        "#12  skipped: map #10 already has work in progress: "
+        "#11 is claimed by @alice." in result.output
+    )
+    assert _looked_only(run)
+
+
+def test_work_on_a_batch_skips_only_the_ticket_you_said_no_to(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **_board(), **_batch(MAP_11)})
+    result = _work(run, monkeypatch, "11", "12", typed="n\n")
+
+    assert result.exit_code == 1
+    assert _line(11, "started") in result.output
+    assert "#12  skipped: map #10 already has work in progress" in result.output
+    assert _add(12) not in run.calls
+
+
+def test_work_with_yes_starts_a_second_session_on_a_map_without_asking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_board(),
+            **_batch(MAP_12),
+            tuple(WORKTREES): (0, porcelain(tree(11)), ""),
+        }
+    )
+    result = _work(run, monkeypatch, "--yes", "12")
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(12, 'started')}\n"
+
+
+@pytest.mark.parametrize(
+    ("numbers", "starts"),
+    [
+        ((21, 22), [(21, "/mattpocock-skills:implement 21")]),
+        ((30,), [(30, "/mattpocock-skills:implement 30")]),
+    ],
+    ids=["a spec's child", "a backlog ticket"],
+)
+def test_work_never_asks_about_spec_children_or_backlog_tickets(
+    monkeypatch: pytest.MonkeyPatch,
+    numbers: tuple[int, ...],
+    starts: list[tuple[int, str]],
+) -> None:
+    # #22 is #21's sibling under spec #20, and already has a worktree.
+    listing = (0, porcelain(tree(22)), "")
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_board(raw_issue(22, assignee="alice")),
+            **_batch(*starts),
+            tuple(WORKTREES): listing,
+            tuple(LIST_WINDOWS): (0, "#22\n", ""),
+        }
+    )
+    result = _work(run, monkeypatch, *(str(n) for n in numbers))
+
+    assert result.exit_code == 0, result.output
+    assert ASKS not in result.output
+
+
+def test_work_asks_before_a_session_on_a_map_child_while_the_map_has_a_worktree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {
+            **TOOLS,
+            **BOARD,
+            **_batch(MAP_12),
+            tuple(WORKTREES): (0, porcelain(tree(10)), ""),
+        }
+    )
+    result = _work(run, monkeypatch, "12", typed="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Map #10 already has work in progress: #10 has a worktree." in result.output
+
+
+def test_work_does_not_ask_because_the_map_itself_is_claimed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A map is often assigned to its owner for as long as it's open.
+    world = _board(raw_issue(10, "wayfinder:map", assignee="alice"))
+    run = FakeRun({**TOOLS, **world, **_batch(MAP_12)})
+    result = _work(run, monkeypatch, "12")
+
+    assert result.exit_code == 0, result.output
+    assert ASKS not in result.output
