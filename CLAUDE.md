@@ -17,7 +17,9 @@ Take the workflow, commit and test rules. Waystation's library-specific machiner
 
 ## Tests
 
-Fake `gh` with `FakeRun` from `tests/helpers.py`, passed as `GhClient(runner=...)`. It answers only the calls it's given, so an unexpected `gh` call fails the test. Test rendering through `render_board` with a recording `Console`.
+Every outside call — `gh`, `git`, `tmux`, `claude` — goes through one runner (`board/run.py`), so one fake describes the whole world. Fake it with `FakeRun` from `tests/helpers.py`, keyed by the whole command program-first (`("gh", "repo", "view")`, `("tmux", "-V")`). It answers only the calls it's given, so an unexpected one fails the test. Reach it by injection where a seam takes it (`GhClient(runner=...)`), or through the CLI with `monkeypatch.setattr("board.cli.default_runner", run)`. Widen `FakeRun` rather than forking it.
+
+Test rendering through `render_board` with a recording `Console`.
 
 ## Agent skills
 

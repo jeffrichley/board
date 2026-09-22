@@ -19,12 +19,12 @@ def test_repo_slug_and_open_issues_drop_prs() -> None:
     ]
     run = FakeRun(
         {
-            ("repo", "view", "--json", "nameWithOwner"): (
+            ("gh", "repo", "view", "--json", "nameWithOwner"): (
                 0,
                 json.dumps({"nameWithOwner": "o/r"}),
                 "",
             ),
-            ("api", "repos/o/r/issues?state=open&per_page=100", "--paginate"): (
+            ("gh", "api", "repos/o/r/issues?state=open&per_page=100", "--paginate"): (
                 0,
                 json.dumps(issues),
                 "",
@@ -39,12 +39,16 @@ def test_repo_slug_and_open_issues_drop_prs() -> None:
 def test_children_and_blockers_soft_fail() -> None:
     run = FakeRun(
         {
-            ("api", "repos/o/r/issues/1/sub_issues?per_page=100"): (
+            ("gh", "api", "repos/o/r/issues/1/sub_issues?per_page=100"): (
                 0,
                 json.dumps([{"number": 2}]),
                 "",
             ),
-            ("api", "repos/o/r/issues/2/dependencies/blocked_by"): (1, "", "nope"),
+            ("gh", "api", "repos/o/r/issues/2/dependencies/blocked_by"): (
+                1,
+                "",
+                "nope",
+            ),
         }
     )
     client = GhClient(runner=run)
@@ -53,7 +57,7 @@ def test_children_and_blockers_soft_fail() -> None:
 
 
 def test_gh_error_on_hard_failure() -> None:
-    run = FakeRun({("repo", "view", "--json", "nameWithOwner"): (1, "", "boom")})
+    run = FakeRun({("gh", "repo", "view", "--json", "nameWithOwner"): (1, "", "boom")})
     client = GhClient(runner=run)
     with pytest.raises(GhError, match="boom"):
         client.repo_slug()
