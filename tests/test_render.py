@@ -1,3 +1,6 @@
+import dataclasses
+
+import pytest
 from rich.console import Console
 
 from board.model import Backlog, Board, Issue, ParentNode, TicketGroup
@@ -95,3 +98,34 @@ def test_backlog_shows_each_group_it_holds() -> None:
     for n in range(1, 6):
         assert f"#{n}  " in text
     assert "wayfinder:grilling" in text
+
+
+BACKLOG_GROUPS = [f.name for f in dataclasses.fields(Backlog)]
+
+
+def _rendered_backlog_line(group: str, issue: Issue) -> str:
+    board = Board(
+        slug="o/r",
+        open_count=1,
+        maps=[],
+        builds=[],
+        backlog=Backlog(**{group: [issue]}),
+    )
+    console = Console(record=True, width=120, force_terminal=True)
+    render_board(board, console=console)
+    ansi = console.export_text(clear=False, styles=True)
+    return next(ln for ln in ansi.splitlines() if f"#{issue.number}" in ln)
+
+
+@pytest.mark.parametrize("group", BACKLOG_GROUPS)
+def test_backlog_claimed_ticket_is_yellow_with_assignee(group: str) -> None:
+    line = _rendered_backlog_line(group, _issue(120, "Taken", "P1", assignee="jeff"))
+    assert "@jeff" in line
+    assert "\x1b[33m#120" in line  # yellow number, as under a map
+
+
+@pytest.mark.parametrize("group", BACKLOG_GROUPS)
+def test_backlog_unclaimed_ticket_renders_plain(group: str) -> None:
+    line = _rendered_backlog_line(group, _issue(121, "Free", "P1"))
+    assert "@" not in line
+    assert "\x1b[33m" not in line
