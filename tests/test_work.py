@@ -1,5 +1,4 @@
 import shlex
-from pathlib import Path
 
 import pytest
 from typer.testing import Result as CliResult
@@ -13,10 +12,11 @@ from helpers import (
     gh_world,
     invoke,
     raw_issue,
+    tree,
 )
 
 ROOT = "/repos/board"
-WORKTREE = str(Path("/repos/board.worktrees/8"))
+WORKTREE = tree(8)
 CLAUDE = shlex.join(
     ["claude", "--dangerously-skip-permissions", "/mattpocock-skills:implement 8"]
 )
@@ -236,17 +236,12 @@ def test_work_says_so_when_a_tool_is_on_path_but_broken(
 
 def _launching(number: int, start: str) -> tuple[World, list[str]]:
     """The git and tmux world for starting #number, and the window it opens."""
-    worktree = str(Path(f"/repos/board.worktrees/{number}"))
-    claude = shlex.join(["claude", "--dangerously-skip-permissions", start])
-    new_session = [
-        *["tmux", "new-session", "-d", "-s", "board"],
-        *["-n", f"#{number}", "-c", worktree, claude],
-    ]
+    new_session = _opens(number, start, ["tmux", "new-session", "-d", "-s", "board"])
     world: World = {
         **CHECKOUT,
         tuple(FETCH): (0, "", ""),
         tuple(VERIFY): (0, "abc123\n", ""),
-        ("git", "worktree", "add", "--detach", worktree, "origin/main"): (0, "", ""),
+        tuple(_add(number)): (0, "", ""),
         tuple(HAS_SESSION): (1, "", "no server running"),
         tuple(new_session): (0, "", ""),
     }
@@ -473,3 +468,169 @@ def test_work_resumes_a_claimed_ticket_that_has_a_worktree(
     assert result.exit_code == 0, result.output
     assert "claimed" not in result.output
     assert ADD not in run.calls
+
+
+def _opens(number: int, start: str, where: list[str]) -> list[str]:
+    """The tmux call that opens #number's window, `where` saying in what."""
+    claude = shlex.join(["claude", "--dangerously-skip-permissions", start])
+    return [*where, *["-n", f"#{number}", "-c", tree(number), claude]]
+
+
+def _window(number: int) -> list[str]:
+    """The window board opens for backlog ticket #number in the running session."""
+    start = f"/mattpocock-skills:implement {number}"
+    return _opens(number, start, ["tmux", "new-window", "-t", "=board"])
+
+
+def _add(number: int) -> list[str]:
+    return ["git", "worktree", "add", "--detach", tree(number), "origin/main"]
+
+
+def _batch(*numbers: int) -> World:
+    """A clone and a running repo session in which each of `numbers` can start."""
+    world: World = {
+        **CHECKOUT,
+        tuple(FETCH): (0, "", ""),
+        tuple(VERIFY): (0, "abc123\n", ""),
+        tuple(HAS_SESSION): (0, "", ""),
+    }
+    for n in numbers:
+        world[tuple(_add(n))] = (0, "", "")
+        world[tuple(_window(n))] = (0, "", "")
+    return world
+
+
+def _line(number: int, status: str) -> str:
+    return f"#{number}  {status} in {tree(number)}   tmux board:#{number}"
+
+
+def test_work_on_several_tickets_starts_each_and_says_where_each_one_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **_batch(8, 9), **gh_world(raw_issue(8), raw_issue(9))})
+    result = _work(run, monkeypatch, "8", "9")
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(8, 'started')}\n{_line(9, 'started')}\n"
+
+
+def test_work_on_a_mixed_batch_starts_what_it_can_and_skips_the_rest_with_reasons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #8 already has a live session, #9 can start, #6 is claimed, #7 is blocked.
+    tickets = gh_world(
+        raw_issue(5),
+        raw_issue(6, assignee="alice"),
+        raw_issue(7),
+        raw_issue(9),
+        blockers={7: [5]},
+    )
+    run = FakeRun({**TOOLS, **_batch(9), **tickets, **STARTED, **WINDOW_ALIVE})
+    result = _work(run, monkeypatch, "8", "9", "6", "7")
+
+    assert result.exit_code == 1
+    assert _line(8, "running") in result.output
+    assert _line(9, "started") in result.output
+    assert "#6 is claimed by @alice." in result.output
+    assert "#7 is blocked by #5." in result.output
+    assert _add(6) not in run.calls
+    assert _add(7) not in run.calls
+
+
+def test_work_on_a_batch_skips_a_ticket_whose_worktree_fails_and_starts_the_others(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(8, 9),
+            **gh_world(raw_issue(8), raw_issue(9)),
+            tuple(_add(8)): (128, "", "directory already exists"),
+        }
+    )
+    result = _work(run, monkeypatch, "8", "9")
+
+    assert result.exit_code == 1
+    assert "directory already exists" in result.output
+    assert _line(9, "started") in result.output
+
+
+def test_work_on_a_batch_looks_at_the_board_and_fetches_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(7, 8, 9),
+            **gh_world(raw_issue(7), raw_issue(8), raw_issue(9)),
+        }
+    )
+    result = _work(run, monkeypatch, "7", "8", "9")
+
+    assert result.exit_code == 0, result.output
+    assert run.calls.count(FETCH) == 1
+    assert run.calls.count(OPEN_ISSUES) == 1
+
+
+def test_work_on_a_batch_does_not_fetch_when_nothing_in_it_can_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claimed = gh_world(raw_issue(6, assignee="alice"), raw_issue(7, assignee="bob"))
+    run = FakeRun({**TOOLS, **CHECKOUT, **claimed})
+    result = _work(run, monkeypatch, "6", "7")
+
+    assert result.exit_code == 1
+    assert _looked_only(run)
+
+
+def test_work_on_a_ticket_named_twice_starts_it_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **_batch(8), **gh_world(raw_issue(8))})
+    result = _work(run, monkeypatch, "8", "8")
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(8, 'started')}\n"
+
+
+def test_work_on_a_batch_attaches_to_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TMUX", "/tmp/tmux-501/default,1234,0")
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(9),
+            **gh_world(raw_issue(9)),
+            **STARTED,
+            **WINDOW_GONE,
+            **REOPENS,
+        }
+    )
+    result = _work(run, monkeypatch, "8", "9")
+
+    assert result.exit_code == 0, result.output
+    verbs = {c[1] for c in run.calls if c[0] == "tmux"}
+    assert not verbs & {"attach-session", "attach", "switch-client"}
+
+
+def test_work_on_a_batch_opens_the_repo_session_for_the_first_ticket_and_joins_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _opens(
+        8,
+        "/mattpocock-skills:implement 8",
+        ["tmux", "new-session", "-d", "-s", "board"],
+    )
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(8, 9),
+            **gh_world(raw_issue(8), raw_issue(9)),
+            tuple(HAS_SESSION): [(1, "", "no server running"), (0, "", "")],
+            tuple(first): (0, "", ""),
+        }
+    )
+    result = _work(run, monkeypatch, "8", "9")
+
+    assert result.exit_code == 0, result.output
+    opened = [c for c in run.calls if c[1] in ("new-session", "new-window")]
+    assert opened == [first, _window(9)]

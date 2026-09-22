@@ -52,6 +52,28 @@ and says `#120  running in …`. If the window is gone, board opens a new `#120`
 window in the worktree running `claude --dangerously-skip-permissions --continue`
 and says `#120  resumed in …`.
 
+Name several tickets to start them all in one go:
+
+```bash
+board work 120 121 122
+```
+
+Each ticket is handled on its own. Every one that can start or resume does, and
+gets the same one line it would get alone. Every one that can't is skipped, and
+board prints it with its reason:
+
+```
+#120  started in /repos/board.worktrees/120   tmux board:#120
+#121  skipped: #121 is claimed by @alice.
+#122  running in /repos/board.worktrees/122   tmux board:#122
+```
+
+Started and running tickets print to stdout, skipped ones to stderr. The exit
+code is non-zero if any ticket was skipped, so a script can tell. Board reads
+the board and fetches `origin` once for the whole batch. If something every
+ticket needs is missing, such as `tmux` or `origin/main`, board stops before
+touching any ticket.
+
 To reach and end sessions (with
 `board` standing for your repo's name):
 
