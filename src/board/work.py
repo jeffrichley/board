@@ -36,6 +36,11 @@ class Session:
         return f"#{self.number}"
 
     @property
+    def exact(self) -> str:
+        """The tmux session as a target that can't prefix-match `board-web`."""
+        return f"={self.tmux_session}"
+
+    @property
     def target(self) -> str:
         return f"{self.tmux_session}:{self.window}"
 
@@ -76,9 +81,9 @@ def start_session(number: int, *, runner: Runner) -> Session:
 
     def open_window(*claude: str) -> Result:
         command = shlex.join(["claude", "--dangerously-skip-permissions", *claude])
-        alive = run("tmux", "has-session", "-t", session.tmux_session).returncode == 0
+        alive = run("tmux", "has-session", "-t", session.exact).returncode == 0
         where = (
-            ["tmux", "new-window", "-t", session.tmux_session]
+            ["tmux", "new-window", "-t", session.exact]
             if alive
             else ["tmux", "new-session", "-d", "-s", session.tmux_session]
         )
@@ -98,7 +103,7 @@ def start_session(number: int, *, runner: Runner) -> Session:
     }
     if session.worktree in worktrees:
         windows = run(
-            *["tmux", "list-windows", "-t", session.tmux_session],
+            *["tmux", "list-windows", "-t", session.exact],
             *["-F", "#{window_name}"],
         )
         if windows.returncode == 0 and session.window in windows.stdout.splitlines():

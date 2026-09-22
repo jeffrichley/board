@@ -21,20 +21,21 @@ WORKTREES = ["git", "worktree", "list", "--porcelain"]
 FETCH = ["git", "fetch", "origin"]
 VERIFY = ["git", "rev-parse", "--verify", "origin/main"]
 ADD = ["git", "worktree", "add", "--detach", WORKTREE, "origin/main"]
-HAS_SESSION = ["tmux", "has-session", "-t", "board"]
+# `=board`, so a sibling repo's `board-web` session is never taken for this one.
+HAS_SESSION = ["tmux", "has-session", "-t", "=board"]
 NEW_SESSION = [
     *["tmux", "new-session", "-d", "-s", "board"],
     *["-n", "#8", "-c", WORKTREE, CLAUDE],
 ]
 NEW_WINDOW = [
-    *["tmux", "new-window", "-t", "board"],
+    *["tmux", "new-window", "-t", "=board"],
     *["-n", "#8", "-c", WORKTREE, CLAUDE],
 ]
 REMOVE = ["git", "worktree", "remove", "--force", WORKTREE]
-LIST_WINDOWS = ["tmux", "list-windows", "-t", "board", "-F", "#{window_name}"]
+LIST_WINDOWS = ["tmux", "list-windows", "-t", "=board", "-F", "#{window_name}"]
 CONTINUE = shlex.join(["claude", "--dangerously-skip-permissions", "--continue"])
 RESUME_WINDOW = [
-    *["tmux", "new-window", "-t", "board"],
+    *["tmux", "new-window", "-t", "=board"],
     *["-n", "#8", "-c", WORKTREE, CONTINUE],
 ]
 RESUME_SESSION = [
@@ -360,12 +361,10 @@ def test_work_reports_a_failed_gh_plainly(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 # #8 already has a worktree: someone ran `board work 8` before.
-STARTED: World = {
-    tuple(TOPLEVEL): (0, f"{ROOT}\n", ""),
-    tuple(WORKTREES): (0, WITH_8, ""),
-}
+STARTED: World = {**CHECKOUT, tuple(WORKTREES): (0, WITH_8, "")}
 WINDOW_ALIVE: World = {tuple(LIST_WINDOWS): (0, "#3\n#8\nzsh\n", "")}
 WINDOW_GONE: World = {tuple(LIST_WINDOWS): (0, "#3\n#80\nzsh\n", "")}
+REOPENS: World = {tuple(HAS_SESSION): (0, "", ""), tuple(RESUME_WINDOW): (0, "", "")}
 
 
 def test_work_on_a_ticket_with_a_live_session_creates_nothing_and_says_where_it_is(
@@ -387,8 +386,7 @@ def test_work_reopens_a_closed_window_continuing_the_conversation(
             **TOOLS,
             **STARTED,
             **WINDOW_GONE,
-            tuple(HAS_SESSION): (0, "", ""),
-            tuple(RESUME_WINDOW): (0, "", ""),
+            **REOPENS,
         }
     )
     result = _work(run, monkeypatch)
@@ -445,13 +443,12 @@ def test_work_keeps_the_worktree_when_reopening_its_window_fails(
 
 @pytest.mark.parametrize("inside_tmux", [False, True], ids=["outside", "inside"])
 @pytest.mark.parametrize("window", [WINDOW_ALIVE, WINDOW_GONE], ids=["alive", "gone"])
-def test_work_never_attaches_to_a_resumed_session(
+def test_work_never_attaches_to_a_session_it_goes_back_to(
     monkeypatch: pytest.MonkeyPatch, window: World, inside_tmux: bool
 ) -> None:
     if inside_tmux:
         monkeypatch.setenv("TMUX", "/tmp/tmux-501/default,1234,0")
-    reopen: World = {tuple(HAS_SESSION): (0, "", ""), tuple(RESUME_WINDOW): (0, "", "")}
-    run = FakeRun({**TOOLS, **STARTED, **window, **reopen})
+    run = FakeRun({**TOOLS, **STARTED, **window, **REOPENS})
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 0, result.output
