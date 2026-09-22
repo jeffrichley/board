@@ -1,6 +1,6 @@
 # board
 
-A Typer + Rich CLI that renders a repo's open GitHub issues as a wayfinding / build / backlog board.
+A Typer + Rich CLI that renders a repo's open GitHub issues as a wayfinding / specs / backlog board.
 
 ## The standards live in waystation
 

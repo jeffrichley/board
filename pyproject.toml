@@ -1,7 +1,7 @@
 [project]
 name = "board"
 version = "0.1.0"
-description = "GitHub issue board for wayfinding, build specs, and backlog"
+description = "GitHub issue board for wayfinding, specs, and backlog"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

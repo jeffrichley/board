@@ -27,7 +27,7 @@ def test_render_includes_lanes_and_colors() -> None:
                 blocks={11: [12]},
             )
         ],
-        builds=[],
+        specs=[],
         backlog=Backlog(p1=[_issue(20, "Fix", "debt", "P1")]),
     )
     console = Console(record=True, width=120, force_terminal=True)
@@ -50,12 +50,12 @@ def _render(board: Board) -> str:
     return console.export_text(clear=False)
 
 
-def test_build_lane_shows_note_claimed_and_what_takeable_unblocks() -> None:
+def test_spec_lane_shows_note_claimed_and_what_takeable_unblocks() -> None:
     board = Board(
         slug="o/r",
         open_count=4,
         maps=[],
-        builds=[
+        specs=[
             ParentNode(
                 issue=Issue(30, "The Spec", (), None, 1, 4, 0),
                 group=TicketGroup(
@@ -71,7 +71,7 @@ def test_build_lane_shows_note_claimed_and_what_takeable_unblocks() -> None:
         backlog=Backlog(),
     )
     text = _render(board)
-    assert "BUILD" in text and "#30" in text and "1/4 done" in text
+    assert "SPECS" in text and "#30" in text and "1/4 done" in text
     assert "frontier clear" in text
     assert "ready-for-agent" in text and "unblocks 1" in text
     assert "CLAIMED" in text and "#32" in text and "@jeff" in text
@@ -83,7 +83,7 @@ def test_backlog_shows_each_group_it_holds() -> None:
         slug="o/r",
         open_count=5,
         maps=[],
-        builds=[],
+        specs=[],
         backlog=Backlog(
             p1=[_issue(1, "Urgent", "P1")],
             p2_debt=[_issue(2, "Cleanup", "debt")],
@@ -108,7 +108,7 @@ def _rendered_backlog_line(group: str, issue: Issue) -> str:
         slug="o/r",
         open_count=1,
         maps=[],
-        builds=[],
+        specs=[],
         backlog=Backlog(**{group: [issue]}),
     )
     console = Console(record=True, width=120, force_terminal=True)

@@ -1,7 +1,7 @@
 # board
 
 Terminal board for GitHub issues shaped like Matt Pocock's skills:
-WAYFINDING maps, BUILD specs, and BACKLOG (debt / triage).
+WAYFINDING maps, SPECS and their tickets, and BACKLOG (debt / triage).
 
 ## Install
 
@@ -24,7 +24,7 @@ uv run pytest
 |---|---|
 | Cyan | Lane headers |
 | Magenta | Map |
-| Blue | Build parent |
+| Blue | Spec parent |
 | Green | Takeable |
 | Yellow | Claimed |
 | Red | Blocked |

@@ -8,7 +8,7 @@ from board.load import load_board
 from board.render import render_board
 
 app = typer.Typer(
-    add_completion=False, help="Show the wayfinding / build / backlog board."
+    add_completion=False, help="Show the wayfinding / specs / backlog board."
 )
 err_console = Console(stderr=True)
 
