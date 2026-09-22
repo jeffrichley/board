@@ -36,7 +36,9 @@ def work(number: int) -> None:
     except (WorkError, GhError) as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
-    typer.echo(f"#{number}  started in {session.worktree}   tmux {session.target}")
+    typer.echo(
+        f"{session.window}  started in {session.worktree}   tmux {session.target}"
+    )
 
 
 if __name__ == "__main__":

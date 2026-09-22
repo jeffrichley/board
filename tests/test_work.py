@@ -109,6 +109,18 @@ def test_work_says_where_the_session_is_and_leaves_you_at_your_prompt(
     assert result.output == f"#8  started in {WORKTREE}   tmux board:#8\n"
 
 
+def test_work_does_the_same_from_inside_tmux(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TMUX", "/tmp/tmux-501/default,1234,0")
+    run = FakeRun({**TOOLS, **TICKET, **REPO, **RUNNING_SESSION})
+    result = _work(run, monkeypatch)
+
+    assert result.exit_code == 0
+    assert result.output == f"#8  started in {WORKTREE}   tmux board:#8\n"
+    assert run.calls[-1] == NEW_WINDOW
+
+
 def test_work_reports_a_missing_tmux_before_creating_anything(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
