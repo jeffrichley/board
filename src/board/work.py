@@ -9,9 +9,10 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
+from board.gh import GhClient
+from board.load import load_board
+from board.route import Refused, starting_command
 from board.run import Result, Runner
-
-IMPLEMENT = "/mattpocock-skills:implement"
 
 
 class WorkError(Exception):
@@ -55,6 +56,10 @@ def start_session(number: int, *, runner: Runner) -> Session:
     require("tmux", "-V", need="board work needs tmux to hold a session.")
     require("claude", "--version", need="Install Claude Code to work a ticket.")
 
+    start = starting_command(load_board(GhClient(runner=runner)), number)
+    if isinstance(start, Refused):
+        raise WorkError(start.reason)
+
     root = Path(
         must("git", "rev-parse", "--show-toplevel", why="not a git repo").stdout.strip()
     )
@@ -72,9 +77,7 @@ def start_session(number: int, *, runner: Runner) -> Session:
         why=f"could not make the worktree for #{number}",
     )
 
-    command = shlex.join(
-        ["claude", "--dangerously-skip-permissions", f"{IMPLEMENT} {number}"]
-    )
+    command = shlex.join(["claude", "--dangerously-skip-permissions", start])
     alive = run("tmux", "has-session", "-t", session.tmux_session).returncode == 0
     open_window = (
         ["tmux", "new-window", "-t", session.tmux_session]

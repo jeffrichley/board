@@ -1,0 +1,84 @@
+"""Which command starts a session on a ticket, worked out from where it sits.
+
+A ticket that isn't takeable, or sits somewhere no session should start, is
+refused with a reason instead.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum, auto
+
+from board.model import Board, Issue, TicketGroup
+
+
+@dataclass(frozen=True)
+class Refused:
+    reason: str
+
+
+class Place(Enum):
+    MAP = auto()
+    MAP_CHILD = auto()
+    SPEC = auto()
+    SPEC_CHILD = auto()
+    BACKLOG = auto()
+    ORPHAN_WAYFINDER = auto()
+
+
+# The one table. `{n}` is the ticket, `{map}` the map it sits under.
+STARTS: dict[Place, str | Refused] = {
+    Place.MAP: "/mattpocock-skills:wayfinder {map}",
+    Place.MAP_CHILD: "/mattpocock-skills:wayfinder {map} {n}",
+    Place.SPEC_CHILD: "/mattpocock-skills:implement {n}",
+    Place.BACKLOG: "/mattpocock-skills:implement {n}",
+    Place.SPEC: Refused("#{n} is a spec: work its tickets instead."),
+    Place.ORPHAN_WAYFINDER: Refused(
+        "#{n} is a wayfinder ticket with no map: there's no map to work it through."
+    ),
+}
+
+
+def _members(group: TicketGroup) -> list[Issue]:
+    return [*group.takeable, *group.claimed, *group.blocked]
+
+
+def _locate(board: Board, number: int) -> tuple[Place, Issue, int | None] | None:
+    """Where `number` sits, the ticket itself, and the map it sits under."""
+    for m in board.maps:
+        if m.issue.number == number:
+            return Place.MAP, m.issue, number
+        for t in _members(m.group):
+            if t.number == number:
+                return Place.MAP_CHILD, t, m.issue.number
+    for s in board.specs:
+        if s.issue.number == number:
+            return Place.SPEC, s.issue, None
+        for t in _members(s.group):
+            if t.number == number:
+                return Place.SPEC_CHILD, t, None
+    b = board.backlog
+    for t in b.orphan_wayfinder:
+        if t.number == number:
+            return Place.ORPHAN_WAYFINDER, t, None
+    for t in [*b.p1, *b.p2_debt, *b.ready, *b.other]:
+        if t.number == number:
+            return Place.BACKLOG, t, None
+    return None
+
+
+def starting_command(board: Board, number: int) -> str | Refused:
+    """The command a session on `number` starts with, or why it can't start."""
+    found = _locate(board, number)
+    if found is None:
+        return Refused(f"#{number} is not an open ticket on {board.slug}.")
+    place, ticket, map_number = found
+    if ticket.assignee:
+        return Refused(f"#{number} is claimed by @{ticket.assignee}.")
+    if blockers := board.open_blockers.get(number):
+        by = ", ".join(f"#{b}" for b in blockers)
+        return Refused(f"#{number} is blocked by {by}.")
+    start = STARTS[place]
+    if isinstance(start, Refused):
+        return Refused(start.reason.format(n=number))
+    return start.format(n=number, map=map_number)
