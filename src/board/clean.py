@@ -12,6 +12,7 @@ from pathlib import Path
 
 from board.gh import GhClient
 from board.run import Result, Runner
+from board.worktree import live_windows, worktree_paths
 
 
 class CleanError(Exception):
@@ -31,16 +32,6 @@ class Outcome:
         return not self.kept_because and not self.error
 
 
-def _worktrees(porcelain: str) -> list[Path]:
-    """Every worktree git lists, the main checkout first."""
-    prefix = "worktree "
-    return [
-        Path(line[len(prefix) :])
-        for line in porcelain.splitlines()
-        if line.startswith(prefix)
-    ]
-
-
 def clean(*, runner: Runner) -> list[Outcome]:
     """Judge every worktree board made, removing the ones safe to remove."""
 
@@ -50,7 +41,7 @@ def clean(*, runner: Runner) -> list[Outcome]:
     listed = run("git", "worktree", "list", "--porcelain")
     if listed.returncode != 0:
         raise CleanError(f"could not list worktrees\n{listed.stderr.strip()}")
-    main, *others = _worktrees(listed.stdout)
+    main, *others = worktree_paths(listed.stdout)
     home = main.parent / f"{main.name}.worktrees"
     ours = [w for w in others if w.parent == home]
     if not ours:
@@ -63,9 +54,7 @@ def clean(*, runner: Runner) -> list[Outcome]:
     gh = GhClient(runner=runner)
     slug = gh.repo_slug() if any(w.name.isdigit() for w in ours) else ""
     # No tmux server, or no session for this repo, means no window is alive.
-    # `=` makes tmux match the session name exactly, not as a prefix.
-    windows = run("tmux", "list-windows", "-t", f"={main.name}", "-F", "#{window_name}")
-    alive = set(windows.stdout.split()) if windows.returncode == 0 else set()
+    alive = live_windows(runner, main.name)
 
     outcomes = []
     for tree in ours:

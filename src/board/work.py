@@ -16,6 +16,7 @@ from board.gh import GhClient
 from board.load import load_board
 from board.route import Refused, starting_command
 from board.run import Result, Runner
+from board.worktree import live_windows, worktree_paths
 
 
 class WorkError(Exception):
@@ -96,17 +97,8 @@ def start_session(number: int, *, runner: Runner) -> Session:
     listing = must(
         "git", "worktree", "list", "--porcelain", why="could not list worktrees"
     )
-    worktrees = {
-        Path(line.removeprefix("worktree "))
-        for line in listing.stdout.splitlines()
-        if line.startswith("worktree ")
-    }
-    if session.worktree in worktrees:
-        windows = run(
-            *["tmux", "list-windows", "-t", session.exact],
-            *["-F", "#{window_name}"],
-        )
-        if windows.returncode == 0 and session.window in windows.stdout.splitlines():
+    if session.worktree in worktree_paths(listing.stdout):
+        if session.window in live_windows(runner, session.tmux_session):
             return replace(session, status="running")
         window = open_window("--continue")
         if window.returncode != 0:
