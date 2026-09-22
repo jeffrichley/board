@@ -55,6 +55,13 @@ def tree(number: int | str) -> str:
     return str(Path(f"/repos/board.worktrees/{number}"))
 
 
+def porcelain(*paths: str) -> str:
+    """`git worktree list --porcelain` for the `/repos/board` clone and `paths`."""
+    main = "worktree /repos/board\nHEAD abc123\nbranch refs/heads/main\n\n"
+    rest = "".join(f"worktree {p}\nHEAD abc123\ndetached\n\n" for p in paths)
+    return main + rest
+
+
 def raw_issue(
     number: int,
     *labels: str,
@@ -103,7 +110,15 @@ def gh_world(
     return world
 
 
-def invoke(run: "FakeRun", monkeypatch: pytest.MonkeyPatch, *args: str) -> CliResult:
-    """Run `board *args` with every outside call answered by `run`."""
+def invoke(
+    run: "FakeRun",
+    monkeypatch: pytest.MonkeyPatch,
+    *args: str,
+    typed: str | None = None,
+) -> CliResult:
+    """Run `board *args` with every outside call answered by `run`.
+
+    `typed` is what you type at board's prompts, each answer ending in a newline.
+    """
     monkeypatch.setattr("board.cli.default_runner", run)
-    return CliRunner().invoke(app, list(args))
+    return CliRunner().invoke(app, list(args), input=typed)

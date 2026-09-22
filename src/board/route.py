@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from board.model import Board, Issue, TicketGroup
+from board.model import Board, Issue, ParentNode, TicketGroup
 
 
 @dataclass(frozen=True)
@@ -82,3 +82,16 @@ def starting_command(board: Board, number: int) -> str | Refused:
     if isinstance(start, Refused):
         return Refused(start.reason.format(n=number))
     return start.format(n=number, map=map_number)
+
+
+def map_of(board: Board, number: int) -> ParentNode | None:
+    """The map `number` is or sits under, or None if it's neither."""
+    found = _locate(board, number)
+    if found is None or found[2] is None:
+        return None
+    return next(m for m in board.maps if m.issue.number == found[2])
+
+
+def map_children(node: ParentNode) -> list[Issue]:
+    """Every open child ticket under the map."""
+    return _members(node.group)

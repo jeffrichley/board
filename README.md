@@ -53,6 +53,21 @@ and says `#120  running in …`. If the window is gone, board opens a new `#120`
 window in the worktree running `claude --dangerously-skip-permissions --continue`
 and says `#120  resumed in …`.
 
+A map gets one session at a time. Before starting a session on a map or one of
+its children, board asks if that map already has work in progress: the map or
+another of its children has a worktree, another child is claimed, or another
+ticket on the map is starting in the same `board work` call. The map's own
+claim doesn't count, since a map is often assigned to its owner while it's open.
+The question names the ticket in progress and why:
+
+```
+Map #10 already has work in progress: #11 has a worktree. Start #12 too? [y/N]:
+```
+
+Answer `y` to start it anyway. `n`, or just Enter, skips it with that reason.
+`board work --yes` starts it without asking. A spec's children and backlog
+tickets are never asked about, because they're sliced to run side by side.
+
 Name several tickets to start them all in one go:
 
 ```bash
