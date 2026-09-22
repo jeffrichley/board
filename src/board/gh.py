@@ -62,3 +62,11 @@ class GhClient:
         if raw is None:
             return []
         return [b["number"] for b in json.loads(raw)]
+
+    def issue_state(self, slug: str, num: int) -> str | None:
+        """`open` or `closed`, or None when the issue can't be found."""
+        raw = self._gh_soft("api", f"repos/{slug}/issues/{num}")
+        if raw is None:
+            return None
+        state: str = json.loads(raw)["state"]
+        return state

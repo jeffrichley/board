@@ -1,15 +1,13 @@
+import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 from typer.testing import Result as CliResult
 
-from board.cli import app
-from helpers import OPEN_ISSUES, REPO_VIEW, FakeRun, World, gh_world, raw_issue
+from helpers import FETCH, REPO_VIEW, SLUG, FakeRun, World, invoke
 
 LIST = ["git", "worktree", "list", "--porcelain"]
-FETCH = ["git", "fetch", "origin"]
-WINDOWS = ["tmux", "list-windows", "-t", "board", "-F", "#{window_name}"]
+WINDOWS = ["tmux", "list-windows", "-t", "=board", "-F", "#{window_name}"]
 
 
 def _porcelain(*paths: str) -> str:
@@ -19,20 +17,24 @@ def _porcelain(*paths: str) -> str:
     return main + rest
 
 
-def _tree(number: int) -> str:
-    return str(Path(f"/repos/board.worktrees/{number}"))
+def _tree(name: int | str) -> str:
+    return str(Path(f"/repos/board.worktrees/{name}"))
 
 
-def _status(number: int) -> list[str]:
-    return ["git", "-C", _tree(number), "status", "--porcelain"]
+def _status(name: int | str) -> list[str]:
+    return ["git", "-C", _tree(name), "status", "--porcelain"]
 
 
-def _unpushed(number: int) -> list[str]:
-    return ["git", "-C", _tree(number), "rev-list", "HEAD", "--not", "--remotes"]
+def _unpushed(name: int | str) -> list[str]:
+    return ["git", "-C", _tree(name), "rev-list", "HEAD", "--not", "--remotes"]
 
 
-def _remove(number: int) -> list[str]:
-    return ["git", "worktree", "remove", _tree(number)]
+def _remove(name: int | str) -> list[str]:
+    return ["git", "worktree", "remove", _tree(name)]
+
+
+def _issue(number: int) -> list[str]:
+    return ["gh", "api", f"repos/{SLUG}/issues/{number}"]
 
 
 def _world(
@@ -50,10 +52,12 @@ def _world(
             "",
         ),
         tuple(FETCH): (0, "", ""),
-        **gh_world(*(raw_issue(n) for n in open_)),
+        tuple(REPO_VIEW): (0, json.dumps({"nameWithOwner": SLUG}), ""),
         tuple(WINDOWS): (0, "".join(f"#{n}\n" for n in windows), ""),
     }
     for n in numbers:
+        state = "open" if n in open_ else "closed"
+        world[tuple(_issue(n))] = (0, json.dumps({"state": state}), "")
         world[tuple(_status(n))] = (0, " M a.py\n" if n in dirty else "", "")
         world[tuple(_unpushed(n))] = (0, "fed123\n" if n in unpushed else "", "")
         world[tuple(_remove(n))] = (0, "", "")
@@ -61,8 +65,7 @@ def _world(
 
 
 def _clean(run: FakeRun, monkeypatch: pytest.MonkeyPatch) -> CliResult:
-    monkeypatch.setattr("board.cli.default_runner", run)
-    return CliRunner().invoke(app, ["clean"])
+    return invoke(run, monkeypatch, "clean")
 
 
 def test_clean_removes_the_worktree_of_a_finished_ticket(
@@ -186,20 +189,47 @@ def test_clean_reports_a_failed_gh_before_removing_anything(
     assert result.exit_code == 1
     assert "not logged in" in result.output
     assert _remove(8) not in run.calls
-    assert OPEN_ISSUES not in run.calls
+    assert _issue(8) not in run.calls
+
+
+def test_clean_keeps_a_worktree_whose_ticket_it_cannot_find(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**_world(8), tuple(_issue(8)): (1, "", "HTTP 404: Not Found")})
+    result = _clean(run, monkeypatch)
+
+    assert result.exit_code == 0, result.output
+    assert _remove(8) not in run.calls
+    assert "ticket not found" in result.output
+
+
+def test_clean_keeps_a_worktree_git_cannot_read_and_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {
+            **_world(8),
+            tuple(_status(8)): (128, "", "not a git repository"),
+            tuple(_unpushed(8)): (128, "", "not a git repository"),
+        }
+    )
+    result = _clean(run, monkeypatch)
+
+    assert _remove(8) not in run.calls
+    assert "could not read git status" in result.output
+    assert "could not check for unpushed commits" in result.output
+    assert "uncommitted changes" not in result.output
 
 
 def test_clean_keeps_a_worktree_not_named_for_a_ticket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    spike = str(Path("/repos/board.worktrees/spike"))
     world: World = {
         tuple(LIST): (0, _porcelain("/repos/board.worktrees/spike"), ""),
         tuple(FETCH): (0, "", ""),
-        **gh_world(),
         tuple(WINDOWS): (1, "", "no server running"),
-        ("git", "-C", spike, "status", "--porcelain"): (0, "", ""),
-        ("git", "-C", spike, "rev-list", "HEAD", "--not", "--remotes"): (0, "", ""),
+        tuple(_status("spike")): (0, "", ""),
+        tuple(_unpushed("spike")): (0, "", ""),
     }
     run = FakeRun(world)
     result = _clean(run, monkeypatch)

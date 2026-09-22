@@ -61,9 +61,10 @@ def clean(*, runner: Runner) -> list[Outcome]:
     if fetch.returncode != 0:
         raise CleanError(f"could not fetch origin\n{fetch.stderr.strip()}")
     gh = GhClient(runner=runner)
-    still_open = {i["number"] for i in gh.open_issues(gh.repo_slug())}
+    slug = gh.repo_slug() if any(w.name.isdigit() for w in ours) else ""
     # No tmux server, or no session for this repo, means no window is alive.
-    windows = run("tmux", "list-windows", "-t", main.name, "-F", "#{window_name}")
+    # `=` makes tmux match the session name exactly, not as a prefix.
+    windows = run("tmux", "list-windows", "-t", f"={main.name}", "-F", "#{window_name}")
     alive = set(windows.stdout.split()) if windows.returncode == 0 else set()
 
     outcomes = []
@@ -71,13 +72,23 @@ def clean(*, runner: Runner) -> list[Outcome]:
         reasons = []
         if not tree.name.isdigit():
             reasons.append("not named for a ticket")
-        elif int(tree.name) in still_open:
-            reasons.append("ticket still open")
+        else:
+            # Asked one by one: a number missing from the open list may be a
+            # transferred or deleted issue, and that is not a closed ticket.
+            state = gh.issue_state(slug, int(tree.name))
+            if state is None:
+                reasons.append("ticket not found")
+            elif state != "closed":
+                reasons.append("ticket still open")
         status = run("git", "-C", str(tree), "status", "--porcelain")
-        if status.returncode != 0 or status.stdout.strip():
+        if status.returncode != 0:
+            reasons.append("could not read git status")
+        elif status.stdout.strip():
             reasons.append("uncommitted changes")
         unpushed = run("git", "-C", str(tree), "rev-list", "HEAD", "--not", "--remotes")
-        if unpushed.returncode != 0 or unpushed.stdout.strip():
+        if unpushed.returncode != 0:
+            reasons.append("could not check for unpushed commits")
+        elif unpushed.stdout.strip():
             reasons.append("unpushed commits")
         if f"#{tree.name}" in alive:
             reasons.append("session still running")
