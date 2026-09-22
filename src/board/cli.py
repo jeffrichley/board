@@ -30,12 +30,13 @@ def main(ctx: typer.Context) -> None:
 
 @app.command()
 def work(number: int) -> None:
-    """Start an interactive Claude Code session on ticket NUMBER."""
+    """Start a Claude Code session on ticket NUMBER in its own tmux window."""
     try:
-        start_session(number, runner=default_runner)
+        session = start_session(number, runner=default_runner)
     except (WorkError, GhError) as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
+    typer.echo(f"#{number}  started in {session.worktree}   tmux {session.target}")
 
 
 if __name__ == "__main__":

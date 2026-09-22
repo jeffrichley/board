@@ -18,7 +18,7 @@ board work 120
 ```
 
 `board work <n>` starts an interactive Claude Code session on ticket #120 and
-attaches you to it. It fetches `origin`, adds a worktree for the ticket detached
+leaves you at your prompt. It fetches `origin`, adds a worktree for the ticket detached
 at `origin/main` under `../<repo>.worktrees/<n>/`, opens a tmux window named
 `#<n>` in the tmux session named for the repo, and runs Claude Code there with
 the starting command for where the ticket sits:
@@ -35,8 +35,26 @@ It also refuses a ticket that is claimed (naming the assignee) or blocked
 (naming its open blockers). A refusal creates nothing and exits non-zero.
 
 Board never claims the ticket and never creates a branch — the session's agent
-does both, by the repo's own rules. Detach with `Ctrl-b d` and the session keeps
-running; `Ctrl-b w` lists every ticket running on the repo.
+does both, by the repo's own rules.
+
+Board doesn't attach you to the session. It says where it is, in one line:
+
+```
+#120  started in /repos/board.worktrees/120   tmux board:#120
+```
+
+so you can start another ticket straight away. To reach and end sessions (with
+`board` standing for your repo's name):
+
+| To | Run |
+|---|---|
+| get into the repo's sessions from a plain terminal | `tmux attach -t board` |
+| pick a ticket's window, once inside tmux | `Ctrl-b w`, then arrow keys and Enter |
+| leave tmux with every session still running | `Ctrl-b d` |
+| end one ticket's session | `tmux kill-window -t board:#120` |
+
+`Ctrl-b w` means: press `Ctrl` and `b` together, let go, then press `w`.
+`Ctrl-b` is tmux's prefix, and every tmux shortcut starts with it.
 
 It needs `tmux` and `claude` on PATH and an `origin/main` to start from, and it
 says so plainly if one is missing. macOS and Linux only.

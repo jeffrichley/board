@@ -26,11 +26,9 @@ class FakeRun:
     def __init__(self, mapping: World):
         self.mapping = mapping
         self.calls: list[list[str]] = []
-        self.captures: list[bool] = []
 
-    def __call__(self, args: list[str], *, capture: bool = True) -> Result:
+    def __call__(self, args: list[str]) -> Result:
         self.calls.append(args)
-        self.captures.append(capture)
         key = tuple(args)
         if key not in self.mapping:
             raise AssertionError(f"unexpected call {args}")
