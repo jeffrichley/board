@@ -18,3 +18,17 @@ Take the workflow, commit and test rules. Waystation's library-specific machiner
 ## Tests
 
 Fake `gh` with `FakeRun` from `tests/helpers.py`, passed as `GhClient(runner=...)`. It answers only the calls it's given, so an unexpected `gh` call fails the test. Test rendering through `render_board` with a recording `Console`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues (`jeffrichley/board`), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels, each named for its role. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
