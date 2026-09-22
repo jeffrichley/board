@@ -75,6 +75,25 @@ in `~/.tmux.conf`:
 set -g mouse on
 ```
 
+## Cleaning up worktrees
+
+```bash
+board clean
+```
+
+`board clean` removes each worktree under `../<repo>.worktrees/` that is safe to
+remove, with `git worktree remove`. It removes one only when its ticket is
+closed, it has no uncommitted changes, every commit in it is on some remote
+branch (after fetching `origin`), and no tmux window is alive for it. Every
+worktree it keeps is listed with its reasons:
+
+```
+#120  removed  /repos/board.worktrees/120
+#121  kept: ticket still open, session still running
+```
+
+Nothing else in board ever removes a worktree.
+
 ## Develop
 
 ```bash

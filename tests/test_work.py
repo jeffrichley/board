@@ -2,11 +2,18 @@ import shlex
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 from typer.testing import Result as CliResult
 
-from board.cli import app
-from helpers import OPEN_ISSUES, REPO_VIEW, FakeRun, World, gh_world, raw_issue
+from helpers import (
+    FETCH,
+    OPEN_ISSUES,
+    REPO_VIEW,
+    FakeRun,
+    World,
+    gh_world,
+    invoke,
+    raw_issue,
+)
 
 ROOT = "/repos/board"
 WORKTREE = str(Path("/repos/board.worktrees/8"))
@@ -18,7 +25,6 @@ TMUX_V = ["tmux", "-V"]
 CLAUDE_V = ["claude", "--version"]
 TOPLEVEL = ["git", "rev-parse", "--show-toplevel"]
 WORKTREES = ["git", "worktree", "list", "--porcelain"]
-FETCH = ["git", "fetch", "origin"]
 VERIFY = ["git", "rev-parse", "--verify", "origin/main"]
 ADD = ["git", "worktree", "add", "--detach", WORKTREE, "origin/main"]
 # `=board`, so a sibling repo's `board-web` session is never taken for this one.
@@ -75,8 +81,7 @@ NO_SESSION: World = {
 
 
 def _work(run: FakeRun, monkeypatch: pytest.MonkeyPatch, *args: str) -> CliResult:
-    monkeypatch.setattr("board.cli.default_runner", run)
-    return CliRunner().invoke(app, ["work", *(args or ("8",))])
+    return invoke(run, monkeypatch, "work", *(args or ("8",)))
 
 
 def test_work_makes_the_worktree_then_the_tmux_session_and_stops_there(

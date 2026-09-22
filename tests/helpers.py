@@ -2,6 +2,11 @@ import copy
 import json
 from typing import Any
 
+import pytest
+from typer.testing import CliRunner
+from typer.testing import Result as CliResult
+
+from board.cli import app
 from board.run import Result
 
 World = dict[tuple[str, ...], tuple[int, str, str]]
@@ -14,6 +19,8 @@ OPEN_ISSUES = [
     f"repos/{SLUG}/issues?state=open&per_page=100",
     "--paginate",
 ]
+
+FETCH = ["git", "fetch", "origin"]
 
 
 class FakeRun:
@@ -81,3 +88,9 @@ def gh_world(
         key = ("gh", "api", f"repos/{SLUG}/issues/{n}/dependencies/blocked_by")
         world[key] = (0, json.dumps([{"number": b} for b in bs]), "")
     return world
+
+
+def invoke(run: "FakeRun", monkeypatch: pytest.MonkeyPatch, *args: str) -> CliResult:
+    """Run `board *args` with every outside call answered by `run`."""
+    monkeypatch.setattr("board.cli.default_runner", run)
+    return CliRunner().invoke(app, list(args))

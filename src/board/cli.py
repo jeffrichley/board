@@ -3,6 +3,7 @@ from __future__ import annotations
 import typer
 from rich.console import Console
 
+from board.clean import CleanError, clean
 from board.gh import GhError
 from board.load import load_board
 from board.render import render_board
@@ -40,6 +41,28 @@ def work(number: int) -> None:
         f"{session.window}  {session.status} in {session.worktree}"
         f"   tmux {session.target}"
     )
+
+
+@app.command(name="clean")
+def clean_worktrees() -> None:
+    """Remove the worktrees of closed tickets that hold nothing unsaved."""
+    try:
+        outcomes = clean(runner=default_runner)
+    except (CleanError, GhError) as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1) from e
+    if not outcomes:
+        typer.echo("No worktrees to clean.")
+        return
+    for o in outcomes:
+        if o.removed:
+            typer.echo(f"#{o.name}  removed  {o.worktree}")
+        elif o.error:
+            typer.echo(f"#{o.name}  kept: {o.error}")
+        else:
+            typer.echo(f"#{o.name}  kept: {', '.join(o.kept_because)}")
+    if any(o.error for o in outcomes):
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
