@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Any
 
 MAP_LABEL = "wayfinder:map"
 PART_OF_RE = re.compile(r"(?i)\bPart of #(\d+)\b")
@@ -19,7 +20,7 @@ class Issue:
     blocked_by_count: int
 
     @classmethod
-    def from_raw(cls, raw: dict) -> Issue:
+    def from_raw(cls, raw: dict[str, Any]) -> Issue:
         labels = tuple(lb["name"] for lb in raw.get("labels", []))
         assignee = (raw.get("assignee") or {}).get("login")
         kids = raw.get("sub_issues_summary") or {}
@@ -69,7 +70,7 @@ class Board:
     backlog: Backlog
 
 
-def labels_of(raw: dict) -> list[str]:
+def labels_of(raw: dict[str, Any]) -> list[str]:
     return [lb["name"] for lb in raw.get("labels", [])]
 
 
@@ -92,7 +93,7 @@ def _map_note(
     children_of: dict[int, list[int]],
     build_nums: set[int],
     by_num: dict[int, Issue],
-    issues: list[dict],
+    issues: list[dict[str, Any]],
 ) -> str | None:
     """Status under a map with no open decision tickets left."""
     if not _group_empty(group):
@@ -151,6 +152,7 @@ def blocker_status(num: int, parent: ParentNode) -> str:
     # Outside this parent's groups but no open edge recorded → treat as live
     return "takeable"
 
+
 def _group_tickets(
     tickets: list[Issue],
     edges: dict[int, list[int]],
@@ -195,7 +197,7 @@ def _backlog_for(issues: list[Issue]) -> Backlog:
 
 def build_board(
     slug: str,
-    issues: list[dict],
+    issues: list[dict[str, Any]],
     children_of: dict[int, list[int]],
     blockers_of: dict[int, list[int]],
 ) -> Board:
@@ -213,7 +215,8 @@ def build_board(
             continue
         is_child_of_non_map.update(n for n in kids if n in open_nums)
 
-    # Candidate build parents: open, have open children, not maps, not nested under a build
+    # Candidate build parents: open, have open children, not maps,
+    # not nested under a build
     build_nums: set[int] = set()
     for num, kids in children_of.items():
         if num not in open_nums or num in map_nums or num in is_child_of_non_map:
@@ -224,7 +227,9 @@ def build_board(
     placed: set[int] = set(map_nums) | set(build_nums)
 
     def make_parent(num: int, note: str | None = None) -> ParentNode:
-        child_nums = [k for k in children_of.get(num, []) if k in open_nums and k not in placed]
+        child_nums = [
+            k for k in children_of.get(num, []) if k in open_nums and k not in placed
+        ]
         placed.update(child_nums)
         tickets = [by_num[k] for k in child_nums]
         edges: dict[int, list[int]] = {}

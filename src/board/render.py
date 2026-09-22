@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from rich.console import Console
-from rich.tree import Tree
 from rich.text import Text
+from rich.tree import Tree
 
 from board.model import (
     Board,

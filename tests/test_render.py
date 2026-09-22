@@ -1,6 +1,6 @@
 from rich.console import Console
 
-from board.model import Board, Backlog, Issue, ParentNode, TicketGroup
+from board.model import Backlog, Board, Issue, ParentNode, TicketGroup
 from board.render import render_board
 
 
@@ -8,7 +8,7 @@ def _issue(n: int, title: str, *labels: str, assignee: str | None = None) -> Iss
     return Issue(n, title, labels, assignee, 0, 0, 0)
 
 
-def test_render_includes_lanes_and_colors():
+def test_render_includes_lanes_and_colors() -> None:
     board = Board(
         slug="o/r",
         open_count=3,
@@ -39,3 +39,59 @@ def test_render_includes_lanes_and_colors():
     assert "BACKLOG" in text and "P1" in text and "#20" in text
     html = console.export_html(clear=False)
     assert "WAYFINDING" in html
+
+
+def _render(board: Board) -> str:
+    console = Console(record=True, width=120, force_terminal=True)
+    render_board(board, console=console)
+    return console.export_text(clear=False)
+
+
+def test_build_lane_shows_note_claimed_and_what_takeable_unblocks() -> None:
+    board = Board(
+        slug="o/r",
+        open_count=4,
+        maps=[],
+        builds=[
+            ParentNode(
+                issue=Issue(30, "The Spec", (), None, 1, 4, 0),
+                group=TicketGroup(
+                    takeable=[_issue(31, "Start", "ready-for-agent")],
+                    claimed=[_issue(32, "Mine", assignee="jeff")],
+                    blocked=[_issue(33, "Later")],
+                ),
+                edges={33: [31]},
+                blocks={31: [33]},
+                note="frontier clear",
+            )
+        ],
+        backlog=Backlog(),
+    )
+    text = _render(board)
+    assert "BUILD" in text and "#30" in text and "1/4 done" in text
+    assert "frontier clear" in text
+    assert "ready-for-agent" in text and "unblocks 1" in text
+    assert "CLAIMED" in text and "#32" in text and "@jeff" in text
+    assert "BACKLOG" not in text
+
+
+def test_backlog_shows_each_group_it_holds() -> None:
+    board = Board(
+        slug="o/r",
+        open_count=5,
+        maps=[],
+        builds=[],
+        backlog=Backlog(
+            p1=[_issue(1, "Urgent", "P1")],
+            p2_debt=[_issue(2, "Cleanup", "debt")],
+            ready=[_issue(3, "Go", "ready-for-agent")],
+            orphan_wayfinder=[_issue(4, "Lost", "wayfinder:grilling")],
+            other=[_issue(5, "Misc")],
+        ),
+    )
+    text = _render(board)
+    for heading in ("P1", "P2 / debt", "ready-for-agent", "orphan wayfinder", "other"):
+        assert heading in text
+    for n in range(1, 6):
+        assert f"#{n}  " in text
+    assert "wayfinder:grilling" in text

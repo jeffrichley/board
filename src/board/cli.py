@@ -7,7 +7,9 @@ from board.gh import GhError
 from board.load import load_board
 from board.render import render_board
 
-app = typer.Typer(add_completion=False, help="Show the wayfinding / build / backlog board.")
+app = typer.Typer(
+    add_completion=False, help="Show the wayfinding / build / backlog board."
+)
 err_console = Console(stderr=True)
 
 

@@ -20,8 +20,45 @@ build-backend = "hatchling.build"
 packages = ["src/board"]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "mypy>=1.14",
+    "pytest>=8",
+    "pytest-cov>=6",
+    "ruff>=0.9",
+]
+
+[tool.ruff]
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# tests/ too: test modules import their shared helpers as a top-level module,
+# the same way pytest puts the rootdir of a test file on sys.path.
+mypy_path = "src:tests"
+files = ["src", "tests"]
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = [
+    "-ra",
+    "--cov=board",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-fail-under=85",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["board"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_empty = true

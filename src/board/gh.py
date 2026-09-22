@@ -21,8 +21,8 @@ class GhError(Exception):
     pass
 
 
-def decode_paginated_arrays(raw: str) -> list:
-    out: list = []
+def decode_paginated_arrays(raw: str) -> list[Any]:
+    out: list[Any] = []
     dec = json.JSONDecoder()
     idx = 0
     while idx < len(raw):
@@ -57,12 +57,14 @@ class GhClient:
         return r.stdout
 
     def repo_slug(self) -> str:
-        return json.loads(self._gh("repo", "view", "--json", "nameWithOwner"))[
-            "nameWithOwner"
-        ]
+        view = json.loads(self._gh("repo", "view", "--json", "nameWithOwner"))
+        slug: str = view["nameWithOwner"]
+        return slug
 
-    def open_issues(self, slug: str) -> list[dict]:
-        raw = self._gh("api", f"repos/{slug}/issues?state=open&per_page=100", "--paginate")
+    def open_issues(self, slug: str) -> list[dict[str, Any]]:
+        raw = self._gh(
+            "api", f"repos/{slug}/issues?state=open&per_page=100", "--paginate"
+        )
         return [i for i in decode_paginated_arrays(raw) if "pull_request" not in i]
 
     def children(self, slug: str, num: int) -> list[int]:
@@ -72,9 +74,7 @@ class GhClient:
         return [c["number"] for c in json.loads(raw)]
 
     def blockers(self, slug: str, num: int) -> list[int]:
-        raw = self._gh_soft(
-            "api", f"repos/{slug}/issues/{num}/dependencies/blocked_by"
-        )
+        raw = self._gh_soft("api", f"repos/{slug}/issues/{num}/dependencies/blocked_by")
         if raw is None:
             return []
         return [b["number"] for b in json.loads(raw)]
