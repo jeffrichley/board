@@ -4,7 +4,7 @@ import typer
 from rich.console import Console
 
 from board.clean import CleanError, clean
-from board.gh import GhError
+from board.gh import GhClient, GhError
 from board.load import load_board
 from board.render import render_board
 from board.run import default_runner
@@ -18,11 +18,19 @@ err_console = Console(stderr=True)
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
-    """Show open issues nested by Matt Pocock skill workflows."""
-    if ctx.invoked_subcommand is not None:
-        return
+    """Bare `board` shows the board."""
+    if ctx.invoked_subcommand is None:
+        show()
+
+
+@app.command(short_help="Show the wayfinding / specs / backlog board. (default)")
+def show() -> None:
+    """Show the wayfinding / specs / backlog board.
+
+    Open tickets nested by Matt Pocock skill workflows. Bare `board` does the same.
+    """
     try:
-        board = load_board()
+        board = load_board(GhClient(runner=default_runner))
     except GhError as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e

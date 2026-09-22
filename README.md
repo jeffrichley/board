@@ -9,7 +9,8 @@ WAYFINDING maps, SPECS and their tickets, and BACKLOG (debt / triage).
 uv tool install -e E:/workspaces/ai/agents/board
 ```
 
-Then run `board` inside any git clone with `gh` authenticated.
+Then run `board` inside any git clone with `gh` authenticated. It shows the
+board; `board show` is the same command by name, for its `--help`.
 
 ## Working a ticket
 
