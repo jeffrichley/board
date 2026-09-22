@@ -30,14 +30,15 @@ def main(ctx: typer.Context) -> None:
 
 @app.command()
 def work(number: int) -> None:
-    """Start a Claude Code session on ticket NUMBER in its own tmux window."""
+    """Start a Claude Code session on ticket NUMBER, or go back to the one it has."""
     try:
         session = start_session(number, runner=default_runner)
     except (WorkError, GhError) as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
     typer.echo(
-        f"{session.window}  started in {session.worktree}   tmux {session.target}"
+        f"{session.window}  {session.status} in {session.worktree}"
+        f"   tmux {session.target}"
     )
 
 
