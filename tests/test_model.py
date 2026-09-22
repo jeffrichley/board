@@ -91,11 +91,11 @@ def test_map_with_nested_tickets_not_in_backlog() -> None:
     assert nums == {11, 12}
     assert [i.number for i in board.backlog.p1] == [20]
     assert board.backlog.other == []
-    assert board.builds == []
+    assert board.specs == []
 
 
-def test_build_parent_vs_nested_parent() -> None:
-    """A parent that is itself a child is not a BUILD root."""
+def test_nested_parent_is_not_a_spec() -> None:
+    """A ticket that is itself a child of another ticket is not a spec."""
     issues = [
         _issue(1, "Spec", kids_total=2, kids_completed=1),
         _issue(2, "Child parent", kids_total=1, kids_completed=0),
@@ -107,12 +107,12 @@ def test_build_parent_vs_nested_parent() -> None:
         children_of={1: [2], 2: [3]},
         blockers_of={},
     )
-    assert [p.issue.number for p in board.builds] == [1]
-    assert {t.number for t in board.builds[0].group.takeable} == {2}
-    # #3 is under #2 in GitHub, but v1 only nests one level under BUILD roots:
+    assert [p.issue.number for p in board.specs] == [1]
+    assert {t.number for t in board.specs[0].group.takeable} == {2}
+    # #3 is under #2 in GitHub, but v1 only nests one level under SPECS roots:
     # children of nested parents that aren't themselves roots land in backlog
     # unless listed as open children of the root. Keep #3 out of root kids.
-    assert 3 not in {t.number for t in board.builds[0].group.takeable}
+    assert 3 not in {t.number for t in board.specs[0].group.takeable}
     assert [i.number for i in board.backlog.other] == [3]
 
 
@@ -154,10 +154,10 @@ def test_orphan_wayfinder_beats_ready_bucket() -> None:
     assert board.backlog.ready == []
 
 
-def test_map_not_duplicated_under_build_parent() -> None:
-    """A map listed as a BUILD child is only a map root, not a BUILD ticket."""
+def test_map_not_duplicated_under_a_spec() -> None:
+    """A map listed as a SPECS child is only a map root, not a spec ticket."""
     issues = [
-        _issue(1, "Build", kids_total=2, kids_completed=0),
+        _issue(1, "Spec", kids_total=2, kids_completed=0),
         _issue(10, "Map", labels=["wayfinder:map"], kids_total=1, kids_completed=0),
         _issue(11, "Map child", labels=["wayfinder:grilling"]),
         _issue(20, "Plain"),
@@ -177,15 +177,15 @@ def test_map_not_duplicated_under_build_parent() -> None:
         + board.maps[0].group.blocked
     }
     assert map_ticket_nums == {11}
-    assert len(board.builds) == 1
-    build_ticket_nums = {
+    assert len(board.specs) == 1
+    spec_ticket_nums = {
         t.number
-        for t in board.builds[0].group.takeable
-        + board.builds[0].group.claimed
-        + board.builds[0].group.blocked
+        for t in board.specs[0].group.takeable
+        + board.specs[0].group.claimed
+        + board.specs[0].group.blocked
     }
-    assert 10 not in build_ticket_nums
-    assert build_ticket_nums == set()
+    assert 10 not in spec_ticket_nums
+    assert spec_ticket_nums == set()
     assert [i.number for i in board.backlog.other] == [20]
     assert 11 not in {
         i.number
@@ -239,10 +239,10 @@ def test_map_note_ready_to_close_when_part_of_spec_exists() -> None:
         blockers_of={},
     )
     assert board.maps[0].note is not None
-    assert board.maps[0].note.startswith("ready to close — open build:")
+    assert board.maps[0].note.startswith("ready to close — open spec:")
     assert "#29" in board.maps[0].note
     assert board.maps[0].group.takeable == []
-    assert [p.issue.number for p in board.builds] == [29]
+    assert [p.issue.number for p in board.specs] == [29]
 
 
 def test_map_note_ready_to_close_when_spec_is_sub_issue() -> None:
@@ -257,7 +257,7 @@ def test_map_note_ready_to_close_when_spec_is_sub_issue() -> None:
         children_of={2: [29], 29: [31]},
         blockers_of={},
     )
-    # #29 is child of map but also a build root — skipped as map ticket
+    # #29 is child of map but also a spec root — skipped as map ticket
     assert board.maps[0].note is not None
     assert "ready to close" in board.maps[0].note
     assert "#29" in board.maps[0].note

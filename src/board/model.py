@@ -66,7 +66,7 @@ class Board:
     slug: str
     open_count: int
     maps: list[ParentNode]
-    builds: list[ParentNode]
+    specs: list[ParentNode]
     backlog: Backlog
 
 
@@ -75,7 +75,7 @@ def labels_of(raw: dict[str, Any]) -> list[str]:
 
 
 def parse_part_of(body: str | None) -> int | None:
-    """First `Part of #N` in the body, if any (map/spec parent convention)."""
+    """First `Part of #N` in the body, if any (map/spec convention)."""
     if not body:
         return None
     m = PART_OF_RE.search(body)
@@ -91,7 +91,7 @@ def _map_note(
     group: TicketGroup,
     *,
     children_of: dict[int, list[int]],
-    build_nums: set[int],
+    spec_nums: set[int],
     by_num: dict[int, Issue],
     issues: list[dict[str, Any]],
 ) -> str | None:
@@ -101,19 +101,19 @@ def _map_note(
     related: list[Issue] = []
     seen: set[int] = set()
     for n in children_of.get(map_num, []):
-        if n in build_nums and n not in seen:
+        if n in spec_nums and n not in seen:
             related.append(by_num[n])
             seen.add(n)
     for raw in issues:
         n = raw["number"]
-        if n not in build_nums or n in seen:
+        if n not in spec_nums or n in seen:
             continue
         if parse_part_of(raw.get("body")) == map_num:
             related.append(by_num[n])
             seen.add(n)
     if related:
         bits = ", ".join(f"#{b.number} {short(b.title, 40)}" for b in related)
-        return f"ready to close — open build: {bits}"
+        return f"ready to close — open spec: {bits}"
     return "frontier clear — ready for /to-spec"
 
 
@@ -207,24 +207,24 @@ def build_board(
     maps_raw = [i for i in issues if MAP_LABEL in labels_of(i)]
     map_nums = {i["number"] for i in maps_raw}
 
-    # Anyone listed as an open child of a non-map parent cannot be a BUILD root
-    # (nested under a spec). Children of maps may still be BUILD roots (spec handoff).
+    # Anyone listed as an open child of a non-map parent cannot be a SPECS root
+    # (nested under a spec). Children of maps may still be SPECS roots (spec handoff).
     is_child_of_non_map: set[int] = set()
     for parent, kids in children_of.items():
         if parent in map_nums:
             continue
         is_child_of_non_map.update(n for n in kids if n in open_nums)
 
-    # Candidate build parents: open, have open children, not maps,
-    # not nested under a build
-    build_nums: set[int] = set()
+    # Candidate specs: open, have open children, not maps,
+    # not nested under a spec
+    spec_nums: set[int] = set()
     for num, kids in children_of.items():
         if num not in open_nums or num in map_nums or num in is_child_of_non_map:
             continue
         if any(k in open_nums for k in kids):
-            build_nums.add(num)
+            spec_nums.add(num)
 
-    placed: set[int] = set(map_nums) | set(build_nums)
+    placed: set[int] = set(map_nums) | set(spec_nums)
 
     def make_parent(num: int, note: str | None = None) -> ParentNode:
         child_nums = [
@@ -272,20 +272,20 @@ def build_board(
             i["number"],
             node.group,
             children_of=children_of,
-            build_nums=build_nums,
+            spec_nums=spec_nums,
             by_num=by_num,
             issues=issues,
         )
         if note:
             node.note = note
         maps.append(node)
-    builds = [make_parent(n) for n in sorted(build_nums)]
+    specs = [make_parent(n) for n in sorted(spec_nums)]
 
     leftover = [by_num[n] for n in sorted(open_nums - placed)]
     return Board(
         slug=slug,
         open_count=len(issues),
         maps=maps,
-        builds=builds,
+        specs=specs,
         backlog=_backlog_for(leftover),
     )

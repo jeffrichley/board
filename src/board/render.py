@@ -121,9 +121,9 @@ def render_board(board: Board, console: Console | None = None) -> None:
         console.print(root)
         console.print()
 
-    if board.builds:
-        root = Tree(Text("BUILD", style="bold cyan"))
-        for p in board.builds:
+    if board.specs:
+        root = Tree(Text("SPECS", style="bold cyan"))
+        for p in board.specs:
             _add_parent(root, p, "blue")
         console.print(root)
         console.print()

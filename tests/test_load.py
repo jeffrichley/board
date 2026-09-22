@@ -67,5 +67,5 @@ def test_load_fetches_children_and_blockers_only_where_reported() -> None:
     assert [i.number for i in the_map.group.takeable] == [12]
     assert [i.number for i in the_map.group.blocked] == [11]
     assert the_map.edges == {11: [12]}
-    assert [p.issue.number for p in board.builds] == [20]
+    assert [p.issue.number for p in board.specs] == [20]
     assert len(run.calls) == 5  # nothing fetched for 12 or 21
