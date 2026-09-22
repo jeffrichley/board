@@ -18,7 +18,7 @@ err_console = Console(stderr=True)
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
-    """Show open issues nested by Matt Pocock skill workflows."""
+    """Bare `board` shows the board."""
     if ctx.invoked_subcommand is None:
         show()
 
@@ -27,7 +27,7 @@ def main(ctx: typer.Context) -> None:
 def show() -> None:
     """Show the wayfinding / specs / backlog board.
 
-    Open issues nested by Matt Pocock skill workflows. Bare `board` does the same.
+    Open tickets nested by Matt Pocock skill workflows. Bare `board` does the same.
     """
     try:
         board = load_board(GhClient(runner=default_runner))

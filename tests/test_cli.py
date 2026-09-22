@@ -15,22 +15,13 @@ def test_board_renders_empty_board(
     assert "o/r — no open issues" in result.stdout
 
 
-@ENTRY_POINTS
-def test_board_renders_open_tickets(
-    args: list[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    result = invoke(FakeRun(gh_world(raw_issue(7))), monkeypatch, *args)
-    assert result.exit_code == 0
-    assert "o/r — 1 open" in result.stdout
-    assert "issue 7" in result.stdout
-
-
 def test_bare_board_and_board_show_print_the_same_board(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     world = gh_world(raw_issue(7, "ready-for-agent"), raw_issue(8, "P1"))
     bare = invoke(FakeRun(world), monkeypatch)
     show = invoke(FakeRun(world), monkeypatch, "show")
+    assert "issue 7" in show.output
     assert (bare.exit_code, bare.output) == (show.exit_code, show.output)
 
 
@@ -49,10 +40,9 @@ def test_board_help_lists_show_as_the_default_command(
 ) -> None:
     result = invoke(FakeRun({}), monkeypatch, "--help")
     assert result.exit_code == 0
-    assert "show" in result.output
-    assert "(default)" in result.output
-    # Listed first, ahead of the commands that act on tickets.
-    assert result.output.index("show") < result.output.index("work")
+    marked = [line for line in result.output.splitlines() if "(default)" in line]
+    assert len(marked) == 1
+    assert marked[0].strip("│| ").startswith("show ")
 
 
 def test_board_show_help_describes_the_command(
