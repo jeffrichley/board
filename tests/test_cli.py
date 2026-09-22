@@ -1,29 +1,64 @@
 import pytest
-from typer.testing import CliRunner
 
-from board.cli import app
-from board.gh import GhError
-from board.model import Backlog, Board
+from helpers import REPO_VIEW, FakeRun, gh_world, invoke, raw_issue
+
+# Bare `board` and `board show` are one command reached two ways.
+ENTRY_POINTS = pytest.mark.parametrize("args", [[], ["show"]], ids=["bare", "show"])
 
 
-def test_cli_renders_empty_board(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_load() -> Board:
-        return Board("o/r", 0, [], [], Backlog())
-
-    monkeypatch.setattr("board.cli.load_board", lambda: fake_load())
-    result = CliRunner().invoke(app)
+@ENTRY_POINTS
+def test_board_renders_empty_board(
+    args: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result = invoke(FakeRun(gh_world()), monkeypatch, *args)
     assert result.exit_code == 0
-    assert "o/r" in result.stdout
-    assert "no open issues" in result.stdout.lower() or "0 open" in result.stdout
+    assert "o/r — no open issues" in result.stdout
 
 
-def test_cli_reports_gh_failure_and_exits_nonzero(
+@ENTRY_POINTS
+def test_board_renders_open_tickets(
+    args: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result = invoke(FakeRun(gh_world(raw_issue(7))), monkeypatch, *args)
+    assert result.exit_code == 0
+    assert "o/r — 1 open" in result.stdout
+    assert "issue 7" in result.stdout
+
+
+def test_bare_board_and_board_show_print_the_same_board(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def failing_load() -> Board:
-        raise GhError("gh repo view\nnot a git repository")
+    world = gh_world(raw_issue(7, "ready-for-agent"), raw_issue(8, "P1"))
+    bare = invoke(FakeRun(world), monkeypatch)
+    show = invoke(FakeRun(world), monkeypatch, "show")
+    assert (bare.exit_code, bare.output) == (show.exit_code, show.output)
 
-    monkeypatch.setattr("board.cli.load_board", failing_load)
-    result = CliRunner().invoke(app)
+
+@ENTRY_POINTS
+def test_board_reports_gh_failure_and_exits_nonzero(
+    args: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = FakeRun({tuple(REPO_VIEW): (1, "", "not a git repository")})
+    result = invoke(run, monkeypatch, *args)
     assert result.exit_code == 1
     assert "not a git repository" in result.output
+
+
+def test_board_help_lists_show_as_the_default_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = invoke(FakeRun({}), monkeypatch, "--help")
+    assert result.exit_code == 0
+    assert "show" in result.output
+    assert "(default)" in result.output
+    # Listed first, ahead of the commands that act on tickets.
+    assert result.output.index("show") < result.output.index("work")
+
+
+def test_board_show_help_describes_the_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = invoke(FakeRun({}), monkeypatch, "show", "--help")
+    assert result.exit_code == 0
+    assert "show [OPTIONS]" in result.output
+    assert "wayfinding / specs / backlog board" in result.output
