@@ -8,7 +8,7 @@ from board.gh import GhError
 from board.load import load_board
 from board.render import render_board
 from board.run import default_runner
-from board.work import WorkError, start_session
+from board.work import Skipped, WorkError, start_sessions
 
 app = typer.Typer(
     add_completion=False, help="Show the wayfinding / specs / backlog board."
@@ -30,17 +30,26 @@ def main(ctx: typer.Context) -> None:
 
 
 @app.command()
-def work(number: int) -> None:
-    """Start a Claude Code session on ticket NUMBER, or go back to the one it has."""
+def work(numbers: list[int]) -> None:
+    """Start a Claude Code session on each ticket, or go back to the one it has.
+
+    Exits non-zero if any ticket was skipped.
+    """
     try:
-        session = start_session(number, runner=default_runner)
+        outcomes = start_sessions(numbers, runner=default_runner)
     except (WorkError, GhError) as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
-    typer.echo(
-        f"{session.window}  {session.status} in {session.worktree}"
-        f"   tmux {session.target}"
-    )
+    for o in outcomes:
+        if isinstance(o, Skipped):
+            # Unwrapped, so a script reading stderr gets one reason per skip.
+            err_console.print(
+                f"[red]#{o.number}  skipped: {o.reason}[/red]", soft_wrap=True
+            )
+        else:
+            typer.echo(f"{o.window}  {o.status} in {o.worktree}   tmux {o.target}")
+    if any(isinstance(o, Skipped) for o in outcomes):
+        raise typer.Exit(code=1)
 
 
 @app.command(name="clean")

@@ -473,3 +473,145 @@ def test_work_resumes_a_claimed_ticket_that_has_a_worktree(
     assert result.exit_code == 0, result.output
     assert "claimed" not in result.output
     assert ADD not in run.calls
+
+
+def _window(number: int, start: str) -> list[str]:
+    """The window board opens for #number in the running repo session."""
+    worktree = str(Path(f"/repos/board.worktrees/{number}"))
+    claude = shlex.join(["claude", "--dangerously-skip-permissions", start])
+    return [
+        *["tmux", "new-window", "-t", "=board"],
+        *["-n", f"#{number}", "-c", worktree, claude],
+    ]
+
+
+def _add(number: int) -> list[str]:
+    worktree = str(Path(f"/repos/board.worktrees/{number}"))
+    return ["git", "worktree", "add", "--detach", worktree, "origin/main"]
+
+
+def _batch(*numbers: int) -> World:
+    """A clone and a running repo session in which each of `numbers` can start."""
+    world: World = {
+        **CHECKOUT,
+        tuple(FETCH): (0, "", ""),
+        tuple(VERIFY): (0, "abc123\n", ""),
+        tuple(HAS_SESSION): (0, "", ""),
+    }
+    for n in numbers:
+        world[tuple(_add(n))] = (0, "", "")
+        world[tuple(_window(n, f"/mattpocock-skills:implement {n}"))] = (0, "", "")
+    return world
+
+
+def _line(number: int, status: str) -> str:
+    worktree = Path(f"/repos/board.worktrees/{number}")
+    return f"#{number}  {status} in {worktree}   tmux board:#{number}"
+
+
+def test_work_on_several_tickets_starts_each_and_says_where_each_one_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **_batch(8, 9), **gh_world(raw_issue(8), raw_issue(9))})
+    result = _work(run, monkeypatch, "8", "9")
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(8, 'started')}\n{_line(9, 'started')}\n"
+
+
+def test_work_on_a_mixed_batch_starts_what_it_can_and_skips_the_rest_with_reasons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #8 already has a live session, #9 can start, #6 is claimed, #7 is blocked.
+    tickets = gh_world(
+        raw_issue(5),
+        raw_issue(6, assignee="alice"),
+        raw_issue(7),
+        raw_issue(9),
+        blockers={7: [5]},
+    )
+    run = FakeRun({**TOOLS, **_batch(9), **tickets, **STARTED, **WINDOW_ALIVE})
+    result = _work(run, monkeypatch, "8", "9", "6", "7")
+
+    assert result.exit_code == 1
+    assert _line(8, "running") in result.output
+    assert _line(9, "started") in result.output
+    assert "#6 is claimed by @alice." in result.output
+    assert "#7 is blocked by #5." in result.output
+    assert _add(6) not in run.calls
+    assert _add(7) not in run.calls
+
+
+def test_work_on_a_batch_skips_a_ticket_whose_worktree_fails_and_starts_the_others(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(8, 9),
+            **gh_world(raw_issue(8), raw_issue(9)),
+            tuple(_add(8)): (128, "", "directory already exists"),
+        }
+    )
+    result = _work(run, monkeypatch, "8", "9")
+
+    assert result.exit_code == 1
+    assert "directory already exists" in result.output
+    assert _line(9, "started") in result.output
+
+
+def test_work_on_a_batch_looks_at_the_board_and_fetches_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(7, 8, 9),
+            **gh_world(raw_issue(7), raw_issue(8), raw_issue(9)),
+        }
+    )
+    result = _work(run, monkeypatch, "7", "8", "9")
+
+    assert result.exit_code == 0, result.output
+    assert run.calls.count(FETCH) == 1
+    assert run.calls.count(OPEN_ISSUES) == 1
+
+
+def test_work_on_a_batch_does_not_fetch_when_nothing_in_it_can_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claimed = gh_world(raw_issue(6, assignee="alice"), raw_issue(7, assignee="bob"))
+    run = FakeRun({**TOOLS, **CHECKOUT, **claimed})
+    result = _work(run, monkeypatch, "6", "7")
+
+    assert result.exit_code == 1
+    assert _looked_only(run)
+
+
+def test_work_on_a_ticket_named_twice_starts_it_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **_batch(8), **gh_world(raw_issue(8))})
+    result = _work(run, monkeypatch, "8", "8")
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(8, 'started')}\n"
+
+
+def test_work_on_a_batch_attaches_to_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TMUX", "/tmp/tmux-501/default,1234,0")
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(9),
+            **gh_world(raw_issue(9)),
+            **STARTED,
+            **WINDOW_GONE,
+            **REOPENS,
+        }
+    )
+    result = _work(run, monkeypatch, "8", "9")
+
+    assert result.exit_code == 0, result.output
+    verbs = {c[1] for c in run.calls if c[0] == "tmux"}
+    assert not verbs & {"attach-session", "attach", "switch-client"}
