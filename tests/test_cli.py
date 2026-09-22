@@ -1,7 +1,7 @@
 from typer.testing import CliRunner
 
 from board.cli import app
-from board.model import Board, Backlog
+from board.model import Backlog, Board
 
 
 def test_cli_renders_empty_board(monkeypatch):

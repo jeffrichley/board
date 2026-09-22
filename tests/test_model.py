@@ -80,7 +80,12 @@ def test_map_with_nested_tickets_not_in_backlog():
     )
     assert len(board.maps) == 1
     assert board.maps[0].issue.number == 10
-    nums = {t.number for t in board.maps[0].group.takeable + board.maps[0].group.claimed + board.maps[0].group.blocked}
+    nums = {
+        t.number
+        for t in board.maps[0].group.takeable
+        + board.maps[0].group.claimed
+        + board.maps[0].group.blocked
+    }
     assert nums == {11, 12}
     assert [i.number for i in board.backlog.p1] == [20]
     assert board.backlog.other == []
@@ -148,7 +153,7 @@ def test_orphan_wayfinder_beats_ready_bucket():
 
 
 def test_map_not_duplicated_under_build_parent():
-    """A map listed as a BUILD child appears only as a map root, not in BUILD tickets."""
+    """A map listed as a BUILD child is only a map root, not a BUILD ticket."""
     issues = [
         _issue(1, "Build", kids_total=2, kids_completed=0),
         _issue(10, "Map", labels=["wayfinder:map"], kids_total=1, kids_completed=0),
@@ -254,4 +259,3 @@ def test_map_note_ready_to_close_when_spec_is_sub_issue():
     assert board.maps[0].note is not None
     assert "ready to close" in board.maps[0].note
     assert "#29" in board.maps[0].note
-

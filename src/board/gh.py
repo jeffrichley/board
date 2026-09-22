@@ -62,7 +62,9 @@ class GhClient:
         ]
 
     def open_issues(self, slug: str) -> list[dict]:
-        raw = self._gh("api", f"repos/{slug}/issues?state=open&per_page=100", "--paginate")
+        raw = self._gh(
+            "api", f"repos/{slug}/issues?state=open&per_page=100", "--paginate"
+        )
         return [i for i in decode_paginated_arrays(raw) if "pull_request" not in i]
 
     def children(self, slug: str, num: int) -> list[int]:
@@ -72,9 +74,7 @@ class GhClient:
         return [c["number"] for c in json.loads(raw)]
 
     def blockers(self, slug: str, num: int) -> list[int]:
-        raw = self._gh_soft(
-            "api", f"repos/{slug}/issues/{num}/dependencies/blocked_by"
-        )
+        raw = self._gh_soft("api", f"repos/{slug}/issues/{num}/dependencies/blocked_by")
         if raw is None:
             return []
         return [b["number"] for b in json.loads(raw)]

@@ -151,6 +151,7 @@ def blocker_status(num: int, parent: ParentNode) -> str:
     # Outside this parent's groups but no open edge recorded → treat as live
     return "takeable"
 
+
 def _group_tickets(
     tickets: list[Issue],
     edges: dict[int, list[int]],
@@ -213,7 +214,8 @@ def build_board(
             continue
         is_child_of_non_map.update(n for n in kids if n in open_nums)
 
-    # Candidate build parents: open, have open children, not maps, not nested under a build
+    # Candidate build parents: open, have open children, not maps,
+    # not nested under a build
     build_nums: set[int] = set()
     for num, kids in children_of.items():
         if num not in open_nums or num in map_nums or num in is_child_of_non_map:
@@ -224,7 +226,9 @@ def build_board(
     placed: set[int] = set(map_nums) | set(build_nums)
 
     def make_parent(num: int, note: str | None = None) -> ParentNode:
-        child_nums = [k for k in children_of.get(num, []) if k in open_nums and k not in placed]
+        child_nums = [
+            k for k in children_of.get(num, []) if k in open_nums and k not in placed
+        ]
         placed.update(child_nums)
         tickets = [by_num[k] for k in child_nums]
         edges: dict[int, list[int]] = {}

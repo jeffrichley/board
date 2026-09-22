@@ -1,6 +1,6 @@
 from rich.console import Console
 
-from board.model import Board, Backlog, Issue, ParentNode, TicketGroup
+from board.model import Backlog, Board, Issue, ParentNode, TicketGroup
 from board.render import render_board
 
 
