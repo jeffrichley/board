@@ -33,7 +33,7 @@ def work(number: int) -> None:
     """Start an interactive Claude Code session on ticket NUMBER."""
     try:
         start_session(number, runner=default_runner)
-    except WorkError as e:
+    except (WorkError, GhError) as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
 

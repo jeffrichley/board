@@ -6,7 +6,7 @@ from typer.testing import CliRunner
 from typer.testing import Result as CliResult
 
 from board.cli import app
-from helpers import FakeRun
+from helpers import OPEN_ISSUES, REPO_VIEW, FakeRun, World, gh_world, raw_issue
 
 ROOT = "/repos/board"
 WORKTREE = str(Path("/repos/board.worktrees/8"))
@@ -32,12 +32,13 @@ NEW_WINDOW = [
 ATTACH = ["tmux", "attach-session", "-t", "board:#8"]
 REMOVE = ["git", "worktree", "remove", "--force", WORKTREE]
 
-World = dict[tuple[str, ...], tuple[int, str, str]]
-
 TOOLS: World = {
     tuple(TMUX_V): (0, "tmux 3.4\n", ""),
     tuple(CLAUDE_V): (0, "2.0.0\n", ""),
 }
+# #8 as a plain backlog ticket: takeable, and started with /implement.
+TICKET: World = gh_world(raw_issue(8, "ready-for-agent"))
+LOOK = [REPO_VIEW, OPEN_ISSUES]
 REPO: World = {
     tuple(TOPLEVEL): (0, f"{ROOT}\n", ""),
     tuple(FETCH): (0, "", ""),
@@ -64,13 +65,14 @@ def _work(run: FakeRun, monkeypatch: pytest.MonkeyPatch, *args: str) -> CliResul
 def test_work_makes_the_worktree_then_the_tmux_session_then_attaches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = FakeRun({**TOOLS, **REPO, **NO_SESSION})
+    run = FakeRun({**TOOLS, **TICKET, **REPO, **NO_SESSION})
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 0
     assert run.calls == [
         TMUX_V,
         CLAUDE_V,
+        *LOOK,
         TOPLEVEL,
         FETCH,
         VERIFY,
@@ -84,13 +86,14 @@ def test_work_makes_the_worktree_then_the_tmux_session_then_attaches(
 def test_work_opens_a_window_when_the_repo_session_is_already_running(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = FakeRun({**TOOLS, **REPO, **RUNNING_SESSION})
+    run = FakeRun({**TOOLS, **TICKET, **REPO, **RUNNING_SESSION})
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 0
     assert run.calls == [
         TMUX_V,
         CLAUDE_V,
+        *LOOK,
         TOPLEVEL,
         FETCH,
         VERIFY,
@@ -104,7 +107,7 @@ def test_work_opens_a_window_when_the_repo_session_is_already_running(
 def test_work_attaches_without_capturing_the_terminal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = FakeRun({**TOOLS, **REPO, **RUNNING_SESSION})
+    run = FakeRun({**TOOLS, **TICKET, **REPO, **RUNNING_SESSION})
     _work(run, monkeypatch)
 
     assert run.captures[-1] is False
@@ -136,7 +139,9 @@ def test_work_reports_a_missing_claude_before_creating_anything(
 def test_work_reports_a_missing_origin_main_before_creating_anything(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = FakeRun({**TOOLS, **REPO, tuple(VERIFY): (128, "", "unknown revision")})
+    run = FakeRun(
+        {**TOOLS, **TICKET, **REPO, tuple(VERIFY): (128, "", "unknown revision")}
+    )
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 1
@@ -145,7 +150,9 @@ def test_work_reports_a_missing_origin_main_before_creating_anything(
 
 
 def test_work_reports_a_failed_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
-    run = FakeRun({**TOOLS, **REPO, tuple(FETCH): (128, "", "no remote named origin")})
+    run = FakeRun(
+        {**TOOLS, **TICKET, **REPO, tuple(FETCH): (128, "", "no remote named origin")}
+    )
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 1
@@ -153,7 +160,9 @@ def test_work_reports_a_failed_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_work_reports_a_failed_worktree_add(monkeypatch: pytest.MonkeyPatch) -> None:
-    run = FakeRun({**TOOLS, **REPO, tuple(ADD): (128, "", "directory already exists")})
+    run = FakeRun(
+        {**TOOLS, **TICKET, **REPO, tuple(ADD): (128, "", "directory already exists")}
+    )
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 1
@@ -166,6 +175,7 @@ def test_work_puts_the_worktree_back_when_the_tmux_window_fails(
     run = FakeRun(
         {
             **TOOLS,
+            **TICKET,
             **REPO,
             **RUNNING_SESSION,
             tuple(NEW_WINDOW): (1, "", "can't find session: board"),
@@ -189,3 +199,134 @@ def test_work_says_so_when_a_tool_is_on_path_but_broken(
     assert result.exit_code == 1
     assert "not on PATH" not in result.output
     assert "library not loaded" in result.output
+
+
+def _launching(number: int, start: str) -> tuple[World, list[str]]:
+    """The git and tmux world for starting #number, and the window it opens."""
+    worktree = str(Path(f"/repos/board.worktrees/{number}"))
+    claude = shlex.join(["claude", "--dangerously-skip-permissions", start])
+    new_session = [
+        *["tmux", "new-session", "-d", "-s", "board"],
+        *["-n", f"#{number}", "-c", worktree, claude],
+    ]
+    world: World = {
+        tuple(TOPLEVEL): (0, f"{ROOT}\n", ""),
+        tuple(FETCH): (0, "", ""),
+        tuple(VERIFY): (0, "abc123\n", ""),
+        ("git", "worktree", "add", "--detach", worktree, "origin/main"): (0, "", ""),
+        tuple(HAS_SESSION): (1, "", "no server running"),
+        tuple(new_session): (0, "", ""),
+        ("tmux", "attach-session", "-t", f"board:#{number}"): (0, "", ""),
+    }
+    return world, new_session
+
+
+def _looked_only(run: FakeRun) -> bool:
+    """Board checked its tools and read the tickets, and created nothing."""
+    return all(c in (TMUX_V, CLAUDE_V) or c[0] == "gh" for c in run.calls)
+
+
+# A map #10 with children #11 and #12, a spec #20 with child #21, a backlog
+# ticket #30, and an orphan wayfinder ticket #40.
+BOARD: World = gh_world(
+    raw_issue(10, "wayfinder:map"),
+    raw_issue(11, "wayfinder:grilling"),
+    raw_issue(12, "wayfinder:grilling"),
+    raw_issue(20),
+    raw_issue(21),
+    raw_issue(30),
+    raw_issue(40, "wayfinder:grilling"),
+    children={10: [11, 12], 20: [21]},
+)
+
+
+@pytest.mark.parametrize(
+    ("number", "start"),
+    [
+        (10, "/mattpocock-skills:wayfinder 10"),
+        (11, "/mattpocock-skills:wayfinder 10 11"),
+        (21, "/mattpocock-skills:implement 21"),
+        (30, "/mattpocock-skills:implement 30"),
+    ],
+    ids=["a map", "a map's child", "a spec's child", "a backlog ticket"],
+)
+def test_work_starts_claude_with_the_command_for_where_the_ticket_sits(
+    monkeypatch: pytest.MonkeyPatch, number: int, start: str
+) -> None:
+    launch, new_session = _launching(number, start)
+    run = FakeRun({**TOOLS, **BOARD, **launch})
+    result = _work(run, monkeypatch, str(number))
+
+    assert result.exit_code == 0, result.output
+    assert new_session in run.calls
+
+
+@pytest.mark.parametrize(
+    ("number", "reason"),
+    [
+        (20, "#20 is a spec: work its tickets instead."),
+        (40, "there's no map to work it through"),
+        (99, "#99 is not an open ticket"),
+    ],
+    ids=["a spec", "an orphan wayfinder ticket", "not an open ticket"],
+)
+def test_work_refuses_a_ticket_no_session_should_start_on(
+    monkeypatch: pytest.MonkeyPatch, number: int, reason: str
+) -> None:
+    run = FakeRun({**TOOLS, **BOARD})
+    result = _work(run, monkeypatch, str(number))
+
+    assert result.exit_code == 1
+    assert reason in result.output
+    assert _looked_only(run)
+
+
+def test_work_refuses_a_claimed_ticket_naming_the_assignee(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **gh_world(raw_issue(8, assignee="alice"))})
+    result = _work(run, monkeypatch, "8")
+
+    assert result.exit_code == 1
+    assert "#8 is claimed by @alice." in result.output
+    assert _looked_only(run)
+
+
+def test_work_refuses_a_blocked_ticket_naming_its_open_blockers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #5 blocked #8 but is closed, so only #6 and #7 are named.
+    world = gh_world(raw_issue(6), raw_issue(7), raw_issue(8), blockers={8: [5, 6, 7]})
+    run = FakeRun({**TOOLS, **world})
+    result = _work(run, monkeypatch, "8")
+
+    assert result.exit_code == 1
+    assert "#8 is blocked by #6, #7." in result.output
+    assert _looked_only(run)
+
+
+def test_work_refuses_a_blocked_map_child_naming_its_open_blockers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = gh_world(
+        raw_issue(10, "wayfinder:map"),
+        raw_issue(11),
+        raw_issue(12),
+        children={10: [11, 12]},
+        blockers={12: [11]},
+    )
+    run = FakeRun({**TOOLS, **world})
+    result = _work(run, monkeypatch, "12")
+
+    assert result.exit_code == 1
+    assert "#12 is blocked by #11." in result.output
+    assert _looked_only(run)
+
+
+def test_work_reports_a_failed_gh_plainly(monkeypatch: pytest.MonkeyPatch) -> None:
+    run = FakeRun({**TOOLS, tuple(REPO_VIEW): (1, "", "gh: not logged in")})
+    result = _work(run, monkeypatch, "8")
+
+    assert result.exit_code == 1
+    assert "not logged in" in result.output
+    assert _looked_only(run)

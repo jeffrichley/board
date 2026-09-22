@@ -68,6 +68,7 @@ class Board:
     maps: list[ParentNode]
     specs: list[ParentNode]
     backlog: Backlog
+    open_blockers: dict[int, list[int]] = field(default_factory=dict)
 
 
 def labels_of(raw: dict[str, Any]) -> list[str]:
@@ -288,4 +289,9 @@ def build_board(
         maps=maps,
         specs=specs,
         backlog=_backlog_for(leftover),
+        open_blockers={
+            n: open_b
+            for n, bs in blockers_of.items()
+            if (open_b := [b for b in bs if b in open_nums])
+        },
     )

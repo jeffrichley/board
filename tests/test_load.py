@@ -1,45 +1,26 @@
 import json
-from typing import Any
 
 from board.gh import GhClient
 from board.load import load_board
-from helpers import FakeRun
-
-ISSUES = "repos/o/r/issues?state=open&per_page=100"
-
-
-def _raw(
-    number: int,
-    *labels: str,
-    kids_total: int = 0,
-    blocked_by: int = 0,
-) -> dict[str, Any]:
-    return {
-        "number": number,
-        "title": f"issue {number}",
-        "labels": [{"name": n} for n in labels],
-        "assignee": None,
-        "sub_issues_summary": {"total": kids_total, "completed": 0},
-        "issue_dependencies_summary": {"blocked_by": blocked_by},
-    }
+from helpers import OPEN_ISSUES, REPO_VIEW, FakeRun, raw_issue
 
 
 def test_load_fetches_children_and_blockers_only_where_reported() -> None:
     issues = [
-        _raw(10, "wayfinder:map"),
-        _raw(11, blocked_by=1),
-        _raw(12),
-        _raw(20, kids_total=1),
-        _raw(21),
+        raw_issue(10, "wayfinder:map"),
+        raw_issue(11, blocked_by=1),
+        raw_issue(12),
+        raw_issue(20, kids_total=1),
+        raw_issue(21),
     ]
     run = FakeRun(
         {
-            ("gh", "repo", "view", "--json", "nameWithOwner"): (
+            tuple(REPO_VIEW): (
                 0,
                 json.dumps({"nameWithOwner": "o/r"}),
                 "",
             ),
-            ("gh", "api", ISSUES, "--paginate"): (0, json.dumps(issues), ""),
+            tuple(OPEN_ISSUES): (0, json.dumps(issues), ""),
             ("gh", "api", "repos/o/r/issues/10/sub_issues?per_page=100"): (
                 0,
                 json.dumps([{"number": 11}, {"number": 12}]),
