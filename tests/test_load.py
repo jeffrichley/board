@@ -34,23 +34,23 @@ def test_load_fetches_children_and_blockers_only_where_reported() -> None:
     ]
     run = FakeRun(
         {
-            ("repo", "view", "--json", "nameWithOwner"): (
+            ("gh", "repo", "view", "--json", "nameWithOwner"): (
                 0,
                 json.dumps({"nameWithOwner": "o/r"}),
                 "",
             ),
-            ("api", ISSUES, "--paginate"): (0, json.dumps(issues), ""),
-            ("api", "repos/o/r/issues/10/sub_issues?per_page=100"): (
+            ("gh", "api", ISSUES, "--paginate"): (0, json.dumps(issues), ""),
+            ("gh", "api", "repos/o/r/issues/10/sub_issues?per_page=100"): (
                 0,
                 json.dumps([{"number": 11}, {"number": 12}]),
                 "",
             ),
-            ("api", "repos/o/r/issues/20/sub_issues?per_page=100"): (
+            ("gh", "api", "repos/o/r/issues/20/sub_issues?per_page=100"): (
                 0,
                 json.dumps([{"number": 21}]),
                 "",
             ),
-            ("api", "repos/o/r/issues/11/dependencies/blocked_by"): (
+            ("gh", "api", "repos/o/r/issues/11/dependencies/blocked_by"): (
                 0,
                 json.dumps([{"number": 12}]),
                 "",

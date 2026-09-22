@@ -1,20 +1,9 @@
 from __future__ import annotations
 
 import json
-import subprocess
-from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any
 
-
-@dataclass
-class _Result:
-    returncode: int
-    stdout: str
-    stderr: str
-
-
-Runner = Callable[[list[str]], Any]
+from board.run import Runner, default_runner
 
 
 class GhError(Exception):
@@ -35,23 +24,18 @@ def decode_paginated_arrays(raw: str) -> list[Any]:
     return out
 
 
-def _default_runner(args: list[str]) -> _Result:
-    r = subprocess.run(["gh", *args], capture_output=True, text=True)
-    return _Result(r.returncode, r.stdout, r.stderr)
-
-
 class GhClient:
     def __init__(self, runner: Runner | None = None) -> None:
-        self._run = runner or _default_runner
+        self._run = runner or default_runner
 
     def _gh(self, *args: str) -> str:
-        r = self._run(list(args))
+        r = self._run(["gh", *args])
         if r.returncode != 0:
             raise GhError(f"gh {' '.join(args)}\n{r.stderr.strip()}")
         return r.stdout
 
     def _gh_soft(self, *args: str) -> str | None:
-        r = self._run(list(args))
+        r = self._run(["gh", *args])
         if r.returncode != 0:
             return None
         return r.stdout
