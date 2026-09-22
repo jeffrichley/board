@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from helpers import REPO_VIEW, FakeRun, gh_world, invoke, raw_issue
@@ -6,13 +8,18 @@ from helpers import REPO_VIEW, FakeRun, gh_world, invoke, raw_issue
 ENTRY_POINTS = pytest.mark.parametrize("args", [[], ["show"]], ids=["bare", "show"])
 
 
+def plain(text: str) -> str:
+    """`text` without its ANSI styling: CI forces colour on, a local run doesn't."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 @ENTRY_POINTS
 def test_board_renders_empty_board(
     args: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     result = invoke(FakeRun(gh_world()), monkeypatch, *args)
     assert result.exit_code == 0
-    assert "o/r — no open issues" in result.stdout
+    assert "o/r — no open issues" in plain(result.stdout)
 
 
 def test_bare_board_and_board_show_print_the_same_board(
@@ -40,7 +47,7 @@ def test_board_help_lists_show_as_the_default_command(
 ) -> None:
     result = invoke(FakeRun({}), monkeypatch, "--help")
     assert result.exit_code == 0
-    marked = [line for line in result.output.splitlines() if "(default)" in line]
+    marked = [line for line in plain(result.output).splitlines() if "(default)" in line]
     assert len(marked) == 1
     assert marked[0].strip("│| ").startswith("show ")
 
