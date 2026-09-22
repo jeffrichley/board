@@ -1,3 +1,5 @@
+from typing import Any
+
 from board.model import (
     blocker_status,
     build_board,
@@ -17,7 +19,7 @@ def _issue(
     kids_completed: int = 0,
     blocked_by: int = 0,
     body: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "number": number,
         "title": title,
@@ -29,26 +31,26 @@ def _issue(
     }
 
 
-def test_short_truncates():
+def test_short_truncates() -> None:
     assert short("hello world", 5) == "hell…"
     assert short("hi", 5) == "hi"
 
 
-def test_unblock_count_transitive():
+def test_unblock_count_transitive() -> None:
     blocks = {1: [2], 2: [3]}
     assert unblock_count(1, blocks) == 2
     assert unblock_count(2, blocks) == 1
     assert unblock_count(3, blocks) == 0
 
 
-def test_direct_blockers_only():
+def test_direct_blockers_only() -> None:
     edges = {3: [2], 2: [1]}
     assert direct_blockers(3, edges) == [2]
     assert direct_blockers(2, edges) == [1]
     assert direct_blockers(1, edges) == []
 
 
-def test_blocker_status_colors_by_liveness():
+def test_blocker_status_colors_by_liveness() -> None:
     from board.model import Issue, ParentNode, TicketGroup
 
     takeable = Issue(31, "A", (), None, 0, 0, 0)
@@ -65,7 +67,7 @@ def test_blocker_status_colors_by_liveness():
     assert blocker_status(36, parent) == "blocked"
 
 
-def test_map_with_nested_tickets_not_in_backlog():
+def test_map_with_nested_tickets_not_in_backlog() -> None:
     issues = [
         _issue(10, "Map", labels=["wayfinder:map"], kids_total=2, kids_completed=0),
         _issue(11, "Grill", labels=["wayfinder:grilling"]),
@@ -92,7 +94,7 @@ def test_map_with_nested_tickets_not_in_backlog():
     assert board.builds == []
 
 
-def test_build_parent_vs_nested_parent():
+def test_build_parent_vs_nested_parent() -> None:
     """A parent that is itself a child is not a BUILD root."""
     issues = [
         _issue(1, "Spec", kids_total=2, kids_completed=1),
@@ -114,7 +116,7 @@ def test_build_parent_vs_nested_parent():
     assert [i.number for i in board.backlog.other] == [3]
 
 
-def test_takeable_sorts_by_unblock_then_number():
+def test_takeable_sorts_by_unblock_then_number() -> None:
     issues = [
         _issue(1, "Map", labels=["wayfinder:map"], kids_total=3),
         _issue(2, "A"),
@@ -132,7 +134,7 @@ def test_takeable_sorts_by_unblock_then_number():
     assert takeable_nums == [2, 3]
 
 
-def test_claimed_and_orphan_wayfinder_in_backlog():
+def test_claimed_and_orphan_wayfinder_in_backlog() -> None:
     issues = [
         _issue(5, "Orphan", labels=["wayfinder:task"]),
         _issue(6, "Mine", assignee="jeff"),
@@ -143,7 +145,7 @@ def test_claimed_and_orphan_wayfinder_in_backlog():
     assert [i.number for i in board.backlog.other] == [6]
 
 
-def test_orphan_wayfinder_beats_ready_bucket():
+def test_orphan_wayfinder_beats_ready_bucket() -> None:
     issues = [
         _issue(7, "Lost grill", labels=["wayfinder:grilling", "ready-for-agent"]),
     ]
@@ -152,7 +154,7 @@ def test_orphan_wayfinder_beats_ready_bucket():
     assert board.backlog.ready == []
 
 
-def test_map_not_duplicated_under_build_parent():
+def test_map_not_duplicated_under_build_parent() -> None:
     """A map listed as a BUILD child is only a map root, not a BUILD ticket."""
     issues = [
         _issue(1, "Build", kids_total=2, kids_completed=0),
@@ -195,7 +197,7 @@ def test_map_not_duplicated_under_build_parent():
     }
 
 
-def test_backlog_buckets():
+def test_backlog_buckets() -> None:
     issues = [
         _issue(1, "p1", labels=["debt", "P1"]),
         _issue(2, "p2", labels=["debt", "P2"]),
@@ -209,7 +211,7 @@ def test_backlog_buckets():
     assert [i.number for i in board.backlog.other] == [4]
 
 
-def test_map_note_ready_for_spec_when_frontier_clear():
+def test_map_note_ready_for_spec_when_frontier_clear() -> None:
     issues = [
         _issue(2, "Map", labels=["wayfinder:map"], kids_total=2, kids_completed=2),
     ]
@@ -217,7 +219,7 @@ def test_map_note_ready_for_spec_when_frontier_clear():
     assert board.maps[0].note == "frontier clear — ready for /to-spec"
 
 
-def test_map_note_ready_to_close_when_part_of_spec_exists():
+def test_map_note_ready_to_close_when_part_of_spec_exists() -> None:
     issues = [
         _issue(2, "Map", labels=["wayfinder:map"], kids_total=2, kids_completed=2),
         _issue(
@@ -243,7 +245,7 @@ def test_map_note_ready_to_close_when_part_of_spec_exists():
     assert [p.issue.number for p in board.builds] == [29]
 
 
-def test_map_note_ready_to_close_when_spec_is_sub_issue():
+def test_map_note_ready_to_close_when_spec_is_sub_issue() -> None:
     issues = [
         _issue(2, "Map", labels=["wayfinder:map"], kids_total=3, kids_completed=2),
         _issue(29, "Spec: done planning", kids_total=1, kids_completed=0),

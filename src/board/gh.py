@@ -21,8 +21,8 @@ class GhError(Exception):
     pass
 
 
-def decode_paginated_arrays(raw: str) -> list:
-    out: list = []
+def decode_paginated_arrays(raw: str) -> list[Any]:
+    out: list[Any] = []
     dec = json.JSONDecoder()
     idx = 0
     while idx < len(raw):
@@ -57,11 +57,11 @@ class GhClient:
         return r.stdout
 
     def repo_slug(self) -> str:
-        return json.loads(self._gh("repo", "view", "--json", "nameWithOwner"))[
-            "nameWithOwner"
-        ]
+        view = json.loads(self._gh("repo", "view", "--json", "nameWithOwner"))
+        slug: str = view["nameWithOwner"]
+        return slug
 
-    def open_issues(self, slug: str) -> list[dict]:
+    def open_issues(self, slug: str) -> list[dict[str, Any]]:
         raw = self._gh(
             "api", f"repos/{slug}/issues?state=open&per_page=100", "--paginate"
         )

@@ -1,11 +1,12 @@
+import pytest
 from typer.testing import CliRunner
 
 from board.cli import app
 from board.model import Backlog, Board
 
 
-def test_cli_runs(monkeypatch):
-    def fake_load():
+def test_cli_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_load() -> Board:
         return Board("o/r", 0, [], [], Backlog())
 
     monkeypatch.setattr("board.cli.load_board", lambda: fake_load())

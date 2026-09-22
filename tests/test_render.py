@@ -8,7 +8,7 @@ def _issue(n: int, title: str, *labels: str, assignee: str | None = None) -> Iss
     return Issue(n, title, labels, assignee, 0, 0, 0)
 
 
-def test_render_includes_lanes_and_colors():
+def test_render_includes_lanes_and_colors() -> None:
     board = Board(
         slug="o/r",
         open_count=3,

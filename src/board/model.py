@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Any
 
 MAP_LABEL = "wayfinder:map"
 PART_OF_RE = re.compile(r"(?i)\bPart of #(\d+)\b")
@@ -19,7 +20,7 @@ class Issue:
     blocked_by_count: int
 
     @classmethod
-    def from_raw(cls, raw: dict) -> Issue:
+    def from_raw(cls, raw: dict[str, Any]) -> Issue:
         labels = tuple(lb["name"] for lb in raw.get("labels", []))
         assignee = (raw.get("assignee") or {}).get("login")
         kids = raw.get("sub_issues_summary") or {}
@@ -69,7 +70,7 @@ class Board:
     backlog: Backlog
 
 
-def labels_of(raw: dict) -> list[str]:
+def labels_of(raw: dict[str, Any]) -> list[str]:
     return [lb["name"] for lb in raw.get("labels", [])]
 
 
@@ -92,7 +93,7 @@ def _map_note(
     children_of: dict[int, list[int]],
     build_nums: set[int],
     by_num: dict[int, Issue],
-    issues: list[dict],
+    issues: list[dict[str, Any]],
 ) -> str | None:
     """Status under a map with no open decision tickets left."""
     if not _group_empty(group):
@@ -196,7 +197,7 @@ def _backlog_for(issues: list[Issue]) -> Backlog:
 
 def build_board(
     slug: str,
-    issues: list[dict],
+    issues: list[dict[str, Any]],
     children_of: dict[int, list[int]],
     blockers_of: dict[int, list[int]],
 ) -> Board:
