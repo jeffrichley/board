@@ -25,10 +25,6 @@ class WorkError(Exception):
     """Something every ticket needs is missing or failed. Reported plainly."""
 
 
-class _Skip(Exception):
-    """One ticket can't start; the rest of the batch goes on."""
-
-
 @dataclass(frozen=True)
 class Session:
     number: int
@@ -105,14 +101,14 @@ def start_sessions(
     listing = must(
         "git", "worktree", "list", "--porcelain", why="could not list worktrees"
     )
-    have = set(worktree_paths(listing.stdout))
-    fresh = [n for n, s in sessions.items() if s.worktree not in have]
-
-    starts: dict[int, str | Refused] = {}
-    if fresh:
+    existing = set(worktree_paths(listing.stdout))
+    # Only a ticket with no worktree yet needs the board to say how it starts.
+    new = [n for n, s in sessions.items() if s.worktree not in existing]
+    commands: dict[int, str | Refused] = {}
+    if new:
         board = load_board(GhClient(runner=runner))
-        starts = {n: starting_command(board, n) for n in fresh}
-    if any(isinstance(s, str) for s in starts.values()):
+        commands = {n: starting_command(board, n) for n in new}
+    if any(isinstance(c, str) for c in commands.values()):
         must("git", "fetch", "origin", why="could not fetch origin")
         if run("git", "rev-parse", "--verify", "origin/main").returncode != 0:
             raise WorkError(
@@ -131,47 +127,44 @@ def start_sessions(
             *where, *["-n", session.window, "-c", str(session.worktree)], command
         )
 
-    def go_back(session: Session) -> Session:
+    def go_back(session: Session) -> Session | Skipped:
         if session.window in live_windows(runner, session.tmux_session):
             return replace(session, status="running")
         window = open_window(session, "--continue")
         if window.returncode != 0:
             # The worktree holds the session's work, so it stays.
-            raise _Skip(
+            return Skipped(
+                session.number,
                 f"could not reopen the tmux window for #{session.number}\n"
-                f"{window.stderr.strip()}"
+                f"{window.stderr.strip()}",
             )
         return replace(session, status="resumed")
 
-    def start(session: Session, start: str | Refused) -> Session:
-        if isinstance(start, Refused):
-            raise _Skip(start.reason)
+    def begin(session: Session, command: str | Refused) -> Session | Skipped:
         n = session.number
+        if isinstance(command, Refused):
+            return Skipped(n, command.reason)
         added = run(
             *["git", "worktree", "add", "--detach", str(session.worktree)],
             "origin/main",
         )
         if added.returncode != 0:
-            raise _Skip(
+            return Skipped(
+                n,
                 f"could not make the worktree for #{n}\n"
-                f"{added.stderr.strip() or added.stdout.strip()}"
+                f"{added.stderr.strip() or added.stdout.strip()}",
             )
-        window = open_window(session, start)
+        window = open_window(session, command)
         if window.returncode != 0:
             # A worktree with no session makes the ticket look taken forever, so
             # the empty one goes back before the failure is reported.
             run("git", "worktree", "remove", "--force", str(session.worktree))
-            raise _Skip(
-                f"could not open the tmux window for #{n}\n{window.stderr.strip()}"
+            return Skipped(
+                n, f"could not open the tmux window for #{n}\n{window.stderr.strip()}"
             )
         return session
 
-    outcomes: list[Session | Skipped] = []
-    for n, session in sessions.items():
-        try:
-            outcomes.append(
-                start(session, starts[n]) if n in starts else go_back(session)
-            )
-        except _Skip as skip:
-            outcomes.append(Skipped(n, str(skip)))
-    return outcomes
+    return [
+        begin(s, commands[n]) if n in commands else go_back(s)
+        for n, s in sessions.items()
+    ]

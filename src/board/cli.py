@@ -40,15 +40,21 @@ def work(numbers: list[int]) -> None:
     except (WorkError, GhError) as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
-    for o in outcomes:
-        if isinstance(o, Skipped):
-            # Unwrapped, so a script reading stderr gets one reason per skip.
+    skipped = False
+    for outcome in outcomes:
+        if isinstance(outcome, Skipped):
+            skipped = True
+            # Unwrapped: board adds no line breaks of its own to a reason.
             err_console.print(
-                f"[red]#{o.number}  skipped: {o.reason}[/red]", soft_wrap=True
+                f"[red]#{outcome.number}  skipped: {outcome.reason}[/red]",
+                soft_wrap=True,
             )
         else:
-            typer.echo(f"{o.window}  {o.status} in {o.worktree}   tmux {o.target}")
-    if any(isinstance(o, Skipped) for o in outcomes):
+            typer.echo(
+                f"{outcome.window}  {outcome.status} in {outcome.worktree}"
+                f"   tmux {outcome.target}"
+            )
+    if skipped:
         raise typer.Exit(code=1)
 
 

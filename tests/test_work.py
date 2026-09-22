@@ -1,5 +1,4 @@
 import shlex
-from pathlib import Path
 
 import pytest
 from typer.testing import Result as CliResult
@@ -13,10 +12,11 @@ from helpers import (
     gh_world,
     invoke,
     raw_issue,
+    tree,
 )
 
 ROOT = "/repos/board"
-WORKTREE = str(Path("/repos/board.worktrees/8"))
+WORKTREE = tree(8)
 CLAUDE = shlex.join(
     ["claude", "--dangerously-skip-permissions", "/mattpocock-skills:implement 8"]
 )
@@ -236,17 +236,12 @@ def test_work_says_so_when_a_tool_is_on_path_but_broken(
 
 def _launching(number: int, start: str) -> tuple[World, list[str]]:
     """The git and tmux world for starting #number, and the window it opens."""
-    worktree = str(Path(f"/repos/board.worktrees/{number}"))
-    claude = shlex.join(["claude", "--dangerously-skip-permissions", start])
-    new_session = [
-        *["tmux", "new-session", "-d", "-s", "board"],
-        *["-n", f"#{number}", "-c", worktree, claude],
-    ]
+    new_session = _opens(number, start, ["tmux", "new-session", "-d", "-s", "board"])
     world: World = {
         **CHECKOUT,
         tuple(FETCH): (0, "", ""),
         tuple(VERIFY): (0, "abc123\n", ""),
-        ("git", "worktree", "add", "--detach", worktree, "origin/main"): (0, "", ""),
+        tuple(_add(number)): (0, "", ""),
         tuple(HAS_SESSION): (1, "", "no server running"),
         tuple(new_session): (0, "", ""),
     }
@@ -475,19 +470,20 @@ def test_work_resumes_a_claimed_ticket_that_has_a_worktree(
     assert ADD not in run.calls
 
 
-def _window(number: int, start: str) -> list[str]:
-    """The window board opens for #number in the running repo session."""
-    worktree = str(Path(f"/repos/board.worktrees/{number}"))
+def _opens(number: int, start: str, where: list[str]) -> list[str]:
+    """The tmux call that opens #number's window, `where` saying in what."""
     claude = shlex.join(["claude", "--dangerously-skip-permissions", start])
-    return [
-        *["tmux", "new-window", "-t", "=board"],
-        *["-n", f"#{number}", "-c", worktree, claude],
-    ]
+    return [*where, *["-n", f"#{number}", "-c", tree(number), claude]]
+
+
+def _window(number: int) -> list[str]:
+    """The window board opens for backlog ticket #number in the running session."""
+    start = f"/mattpocock-skills:implement {number}"
+    return _opens(number, start, ["tmux", "new-window", "-t", "=board"])
 
 
 def _add(number: int) -> list[str]:
-    worktree = str(Path(f"/repos/board.worktrees/{number}"))
-    return ["git", "worktree", "add", "--detach", worktree, "origin/main"]
+    return ["git", "worktree", "add", "--detach", tree(number), "origin/main"]
 
 
 def _batch(*numbers: int) -> World:
@@ -500,13 +496,12 @@ def _batch(*numbers: int) -> World:
     }
     for n in numbers:
         world[tuple(_add(n))] = (0, "", "")
-        world[tuple(_window(n, f"/mattpocock-skills:implement {n}"))] = (0, "", "")
+        world[tuple(_window(n))] = (0, "", "")
     return world
 
 
 def _line(number: int, status: str) -> str:
-    worktree = Path(f"/repos/board.worktrees/{number}")
-    return f"#{number}  {status} in {worktree}   tmux board:#{number}"
+    return f"#{number}  {status} in {tree(number)}   tmux board:#{number}"
 
 
 def test_work_on_several_tickets_starts_each_and_says_where_each_one_is(
@@ -615,3 +610,27 @@ def test_work_on_a_batch_attaches_to_nothing(monkeypatch: pytest.MonkeyPatch) ->
     assert result.exit_code == 0, result.output
     verbs = {c[1] for c in run.calls if c[0] == "tmux"}
     assert not verbs & {"attach-session", "attach", "switch-client"}
+
+
+def test_work_on_a_batch_opens_the_repo_session_for_the_first_ticket_and_joins_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _opens(
+        8,
+        "/mattpocock-skills:implement 8",
+        ["tmux", "new-session", "-d", "-s", "board"],
+    )
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(8, 9),
+            **gh_world(raw_issue(8), raw_issue(9)),
+            tuple(HAS_SESSION): [(1, "", "no server running"), (0, "", "")],
+            tuple(first): (0, "", ""),
+        }
+    )
+    result = _work(run, monkeypatch, "8", "9")
+
+    assert result.exit_code == 0, result.output
+    opened = [c for c in run.calls if c[1] in ("new-session", "new-window")]
+    assert opened == [first, _window(9)]

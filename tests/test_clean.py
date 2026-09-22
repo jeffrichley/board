@@ -1,10 +1,9 @@
 import json
-from pathlib import Path
 
 import pytest
 from typer.testing import Result as CliResult
 
-from helpers import FETCH, REPO_VIEW, SLUG, FakeRun, World, invoke
+from helpers import FETCH, REPO_VIEW, SLUG, FakeRun, World, invoke, tree
 
 LIST = ["git", "worktree", "list", "--porcelain"]
 WINDOWS = ["tmux", "list-windows", "-t", "=board", "-F", "#{window_name}"]
@@ -17,20 +16,16 @@ def _porcelain(*paths: str) -> str:
     return main + rest
 
 
-def _tree(name: int | str) -> str:
-    return str(Path(f"/repos/board.worktrees/{name}"))
-
-
 def _status(name: int | str) -> list[str]:
-    return ["git", "-C", _tree(name), "status", "--porcelain"]
+    return ["git", "-C", tree(name), "status", "--porcelain"]
 
 
 def _unpushed(name: int | str) -> list[str]:
-    return ["git", "-C", _tree(name), "rev-list", "HEAD", "--not", "--remotes"]
+    return ["git", "-C", tree(name), "rev-list", "HEAD", "--not", "--remotes"]
 
 
 def _remove(name: int | str) -> list[str]:
-    return ["git", "worktree", "remove", _tree(name)]
+    return ["git", "worktree", "remove", tree(name)]
 
 
 def _issue(number: int) -> list[str]:

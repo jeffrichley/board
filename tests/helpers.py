@@ -1,5 +1,6 @@
 import copy
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -9,7 +10,9 @@ from typer.testing import Result as CliResult
 from board.cli import app
 from board.run import Result
 
-World = dict[tuple[str, ...], tuple[int, str, str]]
+Answer = tuple[int, str, str]
+# A list answers a call that is made more than once, one entry per call in turn.
+World = dict[tuple[str, ...], Answer | list[Answer]]
 
 SLUG = "o/r"
 REPO_VIEW = ["gh", "repo", "view", "--json", "nameWithOwner"]
@@ -27,7 +30,8 @@ class FakeRun:
     """A runner that answers only the calls it was given, and records them.
 
     A key is the whole command, program first: ``("gh", "repo", "view")``,
-    ``("tmux", "-V")``. Any other call fails the test.
+    ``("tmux", "-V")``. Any other call fails the test. A list of answers is
+    given out in turn, the last one repeating once the list runs out.
     """
 
     def __init__(self, mapping: World):
@@ -39,7 +43,16 @@ class FakeRun:
         key = tuple(args)
         if key not in self.mapping:
             raise AssertionError(f"unexpected call {args}")
-        return Result(*self.mapping[key])
+        answer = self.mapping[key]
+        if isinstance(answer, list):
+            asked = sum(tuple(c) == key for c in self.calls) - 1
+            answer = answer[min(asked, len(answer) - 1)]
+        return Result(*answer)
+
+
+def tree(number: int | str) -> str:
+    """Where board puts ticket `number`'s worktree in the `/repos/board` clone."""
+    return str(Path(f"/repos/board.worktrees/{number}"))
 
 
 def raw_issue(
