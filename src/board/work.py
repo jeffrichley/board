@@ -45,10 +45,15 @@ def start_session(number: int, *, runner: Runner) -> Session:
             raise WorkError(f"{why}\n{r.stderr.strip() or r.stdout.strip()}")
         return r
 
-    if run("tmux", "-V").returncode != 0:
-        raise WorkError("tmux is not on PATH. board work needs tmux to hold a session.")
-    if run("claude", "--version").returncode != 0:
-        raise WorkError("claude is not on PATH. Install Claude Code to work a ticket.")
+    def require(tool: str, *args: str, need: str) -> None:
+        r = run(tool, *args)
+        if r.returncode == 127:  # what a shell reports for a command not on PATH
+            raise WorkError(f"{tool} is not on PATH. {need}")
+        if r.returncode != 0:
+            raise WorkError(f"{tool} is on PATH but failed.\n{r.stderr.strip()}")
+
+    require("tmux", "-V", need="board work needs tmux to hold a session.")
+    require("claude", "--version", need="Install Claude Code to work a ticket.")
 
     root = Path(
         must("git", "rev-parse", "--show-toplevel", why="not a git repo").stdout.strip()
@@ -76,10 +81,15 @@ def start_session(number: int, *, runner: Runner) -> Session:
         if alive
         else ["tmux", "new-session", "-d", "-s", session.tmux_session]
     )
-    must(
-        *open_window,
-        *["-n", session.window, "-c", str(session.worktree), command],
-        why=f"could not open the tmux window for #{number}",
+    window = run(
+        *open_window, *["-n", session.window, "-c", str(session.worktree), command]
     )
+    if window.returncode != 0:
+        # A worktree with no session makes the ticket look taken forever, so the
+        # empty one goes back before the failure is reported.
+        run("git", "worktree", "remove", "--force", str(session.worktree))
+        raise WorkError(
+            f"could not open the tmux window for #{number}\n{window.stderr.strip()}"
+        )
     run("tmux", "attach-session", "-t", session.target, capture=False)
     return session

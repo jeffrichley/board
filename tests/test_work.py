@@ -2,7 +2,8 @@ import shlex
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner, Result
+from typer.testing import CliRunner
+from typer.testing import Result as CliResult
 
 from board.cli import app
 from helpers import FakeRun
@@ -29,6 +30,7 @@ NEW_WINDOW = [
     *["-n", "#8", "-c", WORKTREE, CLAUDE],
 ]
 ATTACH = ["tmux", "attach-session", "-t", "board:#8"]
+REMOVE = ["git", "worktree", "remove", "--force", WORKTREE]
 
 World = dict[tuple[str, ...], tuple[int, str, str]]
 
@@ -54,7 +56,7 @@ NO_SESSION: World = {
 }
 
 
-def _work(run: FakeRun, monkeypatch: pytest.MonkeyPatch, *args: str) -> Result:
+def _work(run: FakeRun, monkeypatch: pytest.MonkeyPatch, *args: str) -> CliResult:
     monkeypatch.setattr("board.cli.default_runner", run)
     return CliRunner().invoke(app, ["work", *(args or ("8",))])
 
@@ -158,16 +160,32 @@ def test_work_reports_a_failed_worktree_add(monkeypatch: pytest.MonkeyPatch) -> 
     assert "directory already exists" in result.output
 
 
-def test_work_reports_a_failed_tmux_window(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_work_puts_the_worktree_back_when_the_tmux_window_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     run = FakeRun(
         {
             **TOOLS,
             **REPO,
             **RUNNING_SESSION,
             tuple(NEW_WINDOW): (1, "", "can't find session: board"),
+            tuple(REMOVE): (0, "", ""),
         }
     )
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 1
     assert "can't find session" in result.output
+    assert run.calls[-1] == REMOVE
+    assert ATTACH not in run.calls
+
+
+def test_work_says_so_when_a_tool_is_on_path_but_broken(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({tuple(TMUX_V): (1, "", "dyld: library not loaded")})
+    result = _work(run, monkeypatch)
+
+    assert result.exit_code == 1
+    assert "not on PATH" not in result.output
+    assert "library not loaded" in result.output
