@@ -8,7 +8,7 @@ from board.gh import GhClient, GhError
 from board.load import load_board
 from board.render import render_board
 from board.run import default_runner
-from board.work import Skipped, WorkError, start_sessions
+from board.work import Base, Skipped, WorkError, start_sessions
 
 app = typer.Typer(
     add_completion=False, help="Show the wayfinding / specs / backlog board."
@@ -72,8 +72,17 @@ def work(
                 f"{outcome.window}  {outcome.status} in {outcome.worktree}"
                 f"   tmux {outcome.target}"
             )
+            if outcome.base is not None:
+                typer.echo(f"{' ' * (len(outcome.window) + 2)}{_from(outcome.base)}")
     if skipped:
         raise typer.Exit(code=1)
+
+
+def _from(base: Base) -> str:
+    """Where a started session's worktree was cut, and what your checkout lacks."""
+    new = base.new_since_checkout
+    behind = f" ({new} new since your checkout)" if new else ""
+    return f"from origin/main @ {base.commit}{behind}"
 
 
 @app.command(name="clean")
