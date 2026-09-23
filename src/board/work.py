@@ -28,6 +28,16 @@ class WorkError(Exception):
 
 
 @dataclass(frozen=True)
+class Base:
+    """The commit a new worktree starts from: `origin/main` as board fetched it."""
+
+    commit: str  # abbreviated, as git abbreviates it
+    # Commits in the base that the checkout's `main` lacks; None when git couldn't
+    # say, as in a checkout with no local `main`.
+    new_since_checkout: int | None
+
+
+@dataclass(frozen=True)
 class Session:
     number: int
     worktree: Path
@@ -35,6 +45,8 @@ class Session:
     # What board did: opened a new session, reopened the window of an existing
     # one, or found it already running.
     status: Literal["started", "resumed", "running"] = "started"
+    # Only a session started now has one: a resumed worktree was cut back then.
+    base: Base | None = None
 
     @property
     def window(self) -> str:
@@ -104,6 +116,16 @@ def _one_session_per_map(
     return out
 
 
+def _new_since_checkout(run: Callable[..., Result]) -> int | None:
+    """How many commits `origin/main` has that the checkout's `main` doesn't.
+
+    Advisory only: when git can't say, the count is dropped, never the session.
+    """
+    counted = run("git", "rev-list", "--count", "main..origin/main")
+    count = counted.stdout.strip()
+    return int(count) if counted.returncode == 0 and count.isdigit() else None
+
+
 def start_sessions(
     numbers: Sequence[int], *, runner: Runner, confirm: Callable[[str], bool]
 ) -> list[Session | Skipped]:
@@ -167,12 +189,15 @@ def start_sessions(
             has_worktree=lambda t: tree(t) in existing,
             confirm=confirm,
         )
+    base: Base | None = None
     if any(isinstance(c, str) for c in commands.values()):
         must("git", "fetch", "origin", why="could not fetch origin")
-        if run("git", "rev-parse", "--verify", "origin/main").returncode != 0:
+        verified = run("git", "rev-parse", "--verify", "--short", "origin/main")
+        if verified.returncode != 0:
             raise WorkError(
                 "This clone has no origin/main for a worktree to start from."
             )
+        base = Base(verified.stdout.strip(), _new_since_checkout(run))
 
     def open_window(session: Session, *claude: str) -> Result:
         command = shlex.join(["claude", "--dangerously-skip-permissions", *claude])
@@ -221,7 +246,7 @@ def start_sessions(
             return Skipped(
                 n, f"could not open the tmux window for #{n}\n{window.stderr.strip()}"
             )
-        return session
+        return replace(session, base=base)
 
     return [
         begin(s, commands[n]) if n in commands else go_back(s)

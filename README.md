@@ -38,13 +38,19 @@ It also refuses a ticket that is claimed (naming the assignee) or blocked
 Board never claims the ticket and never creates a branch — the session's agent
 does both, by the repo's own rules.
 
-Board doesn't attach you to the session. It says where it is, in one line:
+Board doesn't attach you to the session. It says where it is, and the base
+its worktree was cut from:
 
 ```
 #120  started in /repos/board.worktrees/120   tmux board:#120
+      from origin/main @ 892179c (2 new since your checkout)
 ```
 
-so you can start another ticket straight away.
+so you can start another ticket straight away. The base is `origin/main` as
+board just fetched it, never your checkout's `main`, so there's no need to
+`git pull` before starting work. The count in brackets is how many commits the
+base has that your checkout's `main` doesn't — a sign a sibling ticket landed.
+It's left off when the two are level, or when git can't say.
 
 Run `board work <n>` again on a ticket that already has a worktree and it goes
 back to that session rather than starting a second, even once the agent has
@@ -75,11 +81,13 @@ board work 120 121 122
 ```
 
 Each ticket is handled on its own. Every one that can start or resume does, and
-gets the same one line it would get alone. Every one that can't is skipped, and
-board prints it with its reason:
+gets the same lines it would get alone. A resumed or running ticket reports no
+base: its worktree was cut when its session began. Every one that can't is
+skipped, and board prints it with its reason:
 
 ```
 #120  started in /repos/board.worktrees/120   tmux board:#120
+      from origin/main @ 892179c
 #121  skipped: #121 is claimed by @alice.
 #122  running in /repos/board.worktrees/122   tmux board:#122
 ```

@@ -27,7 +27,9 @@ TMUX_V = ["tmux", "-V"]
 CLAUDE_V = ["claude", "--version"]
 TOPLEVEL = ["git", "rev-parse", "--show-toplevel"]
 WORKTREES = ["git", "worktree", "list", "--porcelain"]
-VERIFY = ["git", "rev-parse", "--verify", "origin/main"]
+VERIFY = ["git", "rev-parse", "--verify", "--short", "origin/main"]
+# What the base has that the checkout's `main` doesn't.
+NEW_SINCE = ["git", "rev-list", "--count", "main..origin/main"]
 ADD = ["git", "worktree", "add", "--detach", WORKTREE, "origin/main"]
 # `=board`, so a sibling repo's `board-web` session is never taken for this one.
 HAS_SESSION = ["tmux", "has-session", "-t", "=board"]
@@ -66,12 +68,15 @@ CHECKOUT: World = {
     tuple(TOPLEVEL): (0, f"{ROOT}\n", ""),
     tuple(WORKTREES): (0, MAIN_ONLY, ""),
 }
-REPO: World = {
-    **CHECKOUT,
+# A fetched origin/main at 892179c, level with the checkout's `main`.
+BASE: World = {
     tuple(FETCH): (0, "", ""),
-    tuple(VERIFY): (0, "abc123\n", ""),
-    tuple(ADD): (0, "", ""),
+    tuple(VERIFY): (0, "892179c\n", ""),
+    tuple(NEW_SINCE): (0, "0\n", ""),
 }
+# What a started ticket says under its line, aligned beneath "started".
+FROM = "from origin/main @ 892179c"
+REPO: World = {**CHECKOUT, **BASE, tuple(ADD): (0, "", "")}
 RUNNING_SESSION: World = {
     tuple(HAS_SESSION): (0, "", ""),
     tuple(NEW_WINDOW): (0, "", ""),
@@ -106,6 +111,7 @@ def test_work_makes_the_worktree_then_the_tmux_session_and_stops_there(
         *LOOK,
         FETCH,
         VERIFY,
+        NEW_SINCE,
         ADD,
         HAS_SESSION,
         NEW_SESSION,
@@ -127,6 +133,7 @@ def test_work_opens_a_window_when_the_repo_session_is_already_running(
         *LOOK,
         FETCH,
         VERIFY,
+        NEW_SINCE,
         ADD,
         HAS_SESSION,
         NEW_WINDOW,
@@ -140,7 +147,7 @@ def test_work_says_where_the_session_is_and_leaves_you_at_your_prompt(
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 0
-    assert result.output == f"#8  started in {WORKTREE}   tmux board:#8\n"
+    assert result.output == f"{_line(8, 'started')}\n"
 
 
 def test_work_does_the_same_from_inside_tmux(
@@ -151,8 +158,37 @@ def test_work_does_the_same_from_inside_tmux(
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 0
-    assert result.output == f"#8  started in {WORKTREE}   tmux board:#8\n"
+    assert result.output == f"{_line(8, 'started')}\n"
     assert run.calls[-1] == NEW_WINDOW
+
+
+def test_work_says_how_far_the_checkout_is_behind_the_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {**TOOLS, **TICKET, **REPO, **RUNNING_SESSION, tuple(NEW_SINCE): (0, "2\n", "")}
+    )
+    result = _work(run, monkeypatch)
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(8, 'started')} (2 new since your checkout)\n"
+
+
+@pytest.mark.parametrize(
+    "counted",
+    [(128, "", "fatal: ambiguous argument 'main..origin/main'"), (0, "?\n", "")],
+    ids=["no local main", "an unreadable count"],
+)
+def test_work_reports_the_base_without_a_count_it_cannot_work_out(
+    monkeypatch: pytest.MonkeyPatch, counted: tuple[int, str, str]
+) -> None:
+    run = FakeRun(
+        {**TOOLS, **TICKET, **REPO, **RUNNING_SESSION, tuple(NEW_SINCE): counted}
+    )
+    result = _work(run, monkeypatch)
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(8, 'started')}\n"
 
 
 def test_work_reports_a_missing_tmux_before_creating_anything(
@@ -246,8 +282,7 @@ def _launching(number: int, start: str) -> tuple[World, list[str]]:
     new_session = _opens(number, start, ["tmux", "new-session", "-d", "-s", "board"])
     world: World = {
         **CHECKOUT,
-        tuple(FETCH): (0, "", ""),
-        tuple(VERIFY): (0, "abc123\n", ""),
+        **BASE,
         tuple(_add(number)): (0, "", ""),
         tuple(HAS_SESSION): (1, "", "no server running"),
         tuple(new_session): (0, "", ""),
@@ -512,8 +547,7 @@ def _batch(*tickets: int | tuple[int, str]) -> World:
     """
     world: World = {
         **CHECKOUT,
-        tuple(FETCH): (0, "", ""),
-        tuple(VERIFY): (0, "abc123\n", ""),
+        **BASE,
         tuple(HAS_SESSION): (0, "", ""),
     }
     for t in tickets:
@@ -530,7 +564,10 @@ def _batch(*tickets: int | tuple[int, str]) -> World:
 
 
 def _line(number: int, status: str) -> str:
-    return f"#{number}  {status} in {tree(number)}   tmux board:#{number}"
+    """What board says about #number; a started one says its base on a second line."""
+    where = f"#{number}  {status} in {tree(number)}   tmux board:#{number}"
+    indent = " " * len(f"#{number}  ")
+    return f"{where}\n{indent}{FROM}" if status == "started" else where
 
 
 def test_work_on_several_tickets_starts_each_and_says_where_each_one_is(
@@ -564,6 +601,26 @@ def test_work_on_a_mixed_batch_starts_what_it_can_and_skips_the_rest_with_reason
     assert "#7 is blocked by #5." in result.output
     assert _add(6) not in run.calls
     assert _add(7) not in run.calls
+
+
+def test_work_reports_no_base_for_a_session_it_went_back_to_beside_one_it_started(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #8's worktree was cut when its session began, not from this call's fetch.
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(9),
+            **gh_world(raw_issue(9)),
+            **STARTED,
+            **WINDOW_GONE,
+            **REOPENS,
+        }
+    )
+    result = _work(run, monkeypatch, "8", "9")
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(8, 'resumed')}\n{_line(9, 'started')}\n"
 
 
 def test_work_on_a_batch_skips_a_ticket_whose_worktree_fails_and_starts_the_others(
