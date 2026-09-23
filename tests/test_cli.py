@@ -2,7 +2,15 @@ import re
 
 import pytest
 
-from helpers import REPO_VIEW, FakeRun, gh_world, invoke, raw_issue
+from helpers import (
+    NO_SUCH_REPO,
+    OPEN_ISSUES,
+    REPO_VIEW,
+    FakeRun,
+    gh_world,
+    invoke,
+    raw_issue,
+)
 
 # Bare `board` and `board show` are one command reached two ways.
 ENTRY_POINTS = pytest.mark.parametrize("args", [[], ["show"]], ids=["bare", "show"])
@@ -59,3 +67,13 @@ def test_board_show_help_describes_the_command(
     assert result.exit_code == 0
     assert "show [OPTIONS]" in result.output
     assert "wayfinding / specs / backlog board" in result.output
+
+
+@ENTRY_POINTS
+def test_board_reports_a_graphql_error_and_exits_nonzero(
+    args: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = {**gh_world(), tuple(OPEN_ISSUES): NO_SUCH_REPO}
+    result = invoke(FakeRun(world), monkeypatch, *args)
+    assert result.exit_code == 1
+    assert "Could not resolve to a Repository" in result.output

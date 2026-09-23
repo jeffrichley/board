@@ -378,7 +378,7 @@ def test_work_refuses_a_blocked_ticket_naming_its_open_blockers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # #5 blocked #8 but is closed, so only #6 and #7 are named.
-    world = gh_world(raw_issue(6), raw_issue(7), raw_issue(8), blockers={8: [5, 6, 7]})
+    world = gh_world(raw_issue(6), raw_issue(7), raw_issue(8), blockers={8: [7, 6, 5]})
     run = FakeRun({**TOOLS, **CHECKOUT, **world})
     result = _work(run, monkeypatch, "8")
 
