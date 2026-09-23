@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 from typer.testing import Result as CliResult
 
 from board.cli import app
+from board.gh import BOARD_QUERY
 from board.run import Result
 
 Answer = tuple[int, str, str]
@@ -16,12 +17,16 @@ World = dict[tuple[str, ...], Answer | list[Answer]]
 
 SLUG = "o/r"
 REPO_VIEW = ["gh", "repo", "view", "--json", "nameWithOwner"]
-OPEN_ISSUES = [
-    "gh",
-    "api",
-    f"repos/{SLUG}/issues?state=open&per_page=100",
-    "--paginate",
-]
+
+
+def board_query(after: str | None = None) -> list[str]:
+    """The one GraphQL call that loads `o/r`'s board, from the page `after`."""
+    call = ["gh", "api", "graphql", "-f", f"query={BOARD_QUERY}"]
+    call += ["-f", "owner=o", "-f", "name=r"]
+    return call + (["-f", f"cursor={after}"] if after else [])
+
+
+OPEN_ISSUES = board_query()
 
 FETCH = ["git", "fetch", "origin"]
 
@@ -62,22 +67,31 @@ def porcelain(*paths: str) -> str:
     return main + rest
 
 
-def raw_issue(
-    number: int,
-    *labels: str,
-    assignee: str | None = None,
-    kids_total: int = 0,
-    blocked_by: int = 0,
-) -> dict[str, Any]:
-    """An open issue as the `gh` issues API returns it."""
+def raw_issue(number: int, *labels: str, assignee: str | None = None) -> dict[str, Any]:
+    """An open issue as board's GraphQL query returns it, with no sub-issues or
+    blockers: `gh_world` gives it those."""
     return {
         "number": number,
         "title": f"issue {number}",
-        "labels": [{"name": n} for n in labels],
-        "assignee": {"login": assignee} if assignee else None,
-        "sub_issues_summary": {"total": kids_total, "completed": 0},
-        "issue_dependencies_summary": {"blocked_by": blocked_by},
+        "body": "",
+        "labels": {"nodes": [{"name": n} for n in labels]},
+        "assignees": {"nodes": [{"login": assignee}] if assignee else []},
+        "subIssuesSummary": {"total": 0, "completed": 0},
+        "subIssues": connection(),
+        "blockedBy": connection(),
     }
+
+
+def connection(*nodes: dict[str, Any], after: str | None = None) -> dict[str, Any]:
+    """One page of a GraphQL connection, followed by another page `after`."""
+    info = {"hasNextPage": after is not None, "endCursor": after}
+    return {"pageInfo": info, "nodes": list(nodes)}
+
+
+def issues_page(*issues: dict[str, Any], after: str | None = None) -> str:
+    """One page of the board query's answer, followed by another page `after`."""
+    page = connection(*issues, after=after)
+    return json.dumps({"data": {"repository": {"issues": page}}})
 
 
 def gh_world(
@@ -87,27 +101,31 @@ def gh_world(
 ) -> World:
     """The `gh` calls `load_board` makes, answered for these open issues.
 
-    Each issue's sub-issue and blocker summaries are set from `children` and
-    `blockers`, so the board fetches exactly the lists given here.
+    Each issue's sub-issues and blockers are set from `children` and `blockers`.
+    One that isn't among `issues` is closed, as it would be in a one-repo world.
+    Blockers are listed as GitHub's GraphQL lists them: oldest first.
     """
     children = children or {}
     blockers = blockers or {}
-    issues = copy.deepcopy(issues)
-    for raw in issues:
-        n = raw["number"]
-        raw["sub_issues_summary"]["total"] = len(children.get(n, []))
-        raw["issue_dependencies_summary"]["blocked_by"] = len(blockers.get(n, []))
-    world: World = {
+    open_nums = {i["number"] for i in issues}
+
+    def linked(nums: list[int]) -> dict[str, Any]:
+        states = {n: "OPEN" if n in open_nums else "CLOSED" for n in nums}
+        return connection(*({"number": n, "state": s} for n, s in states.items()))
+
+    nodes = copy.deepcopy(issues)
+    for node in nodes:
+        kids = children.get(node["number"], [])
+        node["subIssues"] = linked(kids)
+        node["subIssuesSummary"] = {
+            "total": len(kids),
+            "completed": sum(k not in open_nums for k in kids),
+        }
+        node["blockedBy"] = linked(blockers.get(node["number"], []))
+    return {
         tuple(REPO_VIEW): (0, json.dumps({"nameWithOwner": SLUG}), ""),
-        tuple(OPEN_ISSUES): (0, json.dumps(list(issues)), ""),
+        tuple(OPEN_ISSUES): (0, issues_page(*nodes), ""),
     }
-    for n, kids in children.items():
-        key = ("gh", "api", f"repos/{SLUG}/issues/{n}/sub_issues?per_page=100")
-        world[key] = (0, json.dumps([{"number": k} for k in kids]), "")
-    for n, bs in blockers.items():
-        key = ("gh", "api", f"repos/{SLUG}/issues/{n}/dependencies/blocked_by")
-        world[key] = (0, json.dumps([{"number": b} for b in bs]), "")
-    return world
 
 
 def invoke(
