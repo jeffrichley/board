@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 import typer
 from rich.console import Console
 
@@ -8,7 +10,14 @@ from board.gh import GhClient, GhError
 from board.load import load_board
 from board.render import render_board
 from board.run import default_runner
-from board.work import Base, Skipped, WorkError, start_sessions
+from board.work import (
+    Base,
+    Empty,
+    Skipped,
+    WorkError,
+    parse_ticket,
+    start_sessions,
+)
 
 app = typer.Typer(
     add_completion=False, help="Show the wayfinding / specs / backlog board."
@@ -39,28 +48,41 @@ def show() -> None:
 
 @app.command()
 def work(
-    numbers: list[int],
+    tickets: Annotated[
+        list[str],
+        typer.Argument(
+            metavar="TICKET...",
+            help="Ticket numbers, or ranges like 30-35, in any mix.",
+        ),
+    ],
     yes: bool = typer.Option(
         False, "--yes", help="Start a second session on a map without asking."
     ),
 ) -> None:
     """Start a Claude Code session on each ticket, or go back to the one it has.
 
-    Before a second session on one map, asks [y/N]. Exits non-zero if any ticket
-    was skipped.
+    A range like 30-35 means the open tickets numbered within it. Before a second
+    session on one map, asks [y/N]. Exits non-zero if any ticket was skipped.
     """
 
     def confirm(question: str) -> bool:
         return yes or typer.confirm(question, default=False)
 
     try:
-        outcomes = start_sessions(numbers, runner=default_runner, confirm=confirm)
+        parsed = [parse_ticket(t) for t in tickets]
+    except ValueError as e:
+        raise typer.BadParameter(str(e), param_hint="TICKET") from e
+    try:
+        outcomes = start_sessions(parsed, runner=default_runner, confirm=confirm)
     except (WorkError, GhError) as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
     skipped = False
     for outcome in outcomes:
-        if isinstance(outcome, Skipped):
+        if isinstance(outcome, Empty):
+            skipped = True
+            err_console.print(f"[red]no open tickets in {outcome.span}[/red]")
+        elif isinstance(outcome, Skipped):
             skipped = True
             # Unwrapped: board adds no line breaks of its own to a reason.
             err_console.print(

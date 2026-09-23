@@ -4,11 +4,13 @@ A ticket that already has a worktree has a session, so board goes back to that
 one instead of starting a second. A map gets one session at a time: before
 starting another on it, board asks. Board neither claims the ticket nor creates a
 branch. The agent does both. Each ticket in a batch stands alone: one that can't
-start is skipped with its reason, and the others still start.
+start is skipped with its reason, and the others still start. A range stands for
+the open tickets numbered within it, and they go through the same rules.
 """
 
 from __future__ import annotations
 
+import re
 import shlex
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -18,13 +20,52 @@ from typing import Literal
 from board.gh import GhClient
 from board.load import load_board
 from board.model import Board, Issue
-from board.route import Refused, map_children, map_of, starting_command
+from board.route import (
+    Refused,
+    map_children,
+    map_of,
+    open_tickets,
+    starting_command,
+)
 from board.run import Result, Runner
 from board.worktree import live_windows, worktree_paths
 
 
 class WorkError(Exception):
     """Something every ticket needs is missing or failed. Reported plainly."""
+
+
+@dataclass(frozen=True)
+class Range:
+    """`first-last` on the command line: the open tickets numbered within it.
+
+    GitHub numbers issues and pull requests from one counter, so a range drops
+    its pull requests, closed issues and gaps without a word.
+    """
+
+    first: int
+    last: int
+
+    def __str__(self) -> str:
+        return f"{self.first}-{self.last}"
+
+
+def parse_ticket(text: str) -> int | Range:
+    """A ticket number, or a range like `30-35`. A malformed one raises ValueError."""
+    parts = re.fullmatch(r"(\d+)(?:(-)(\d*))?", text, re.ASCII)
+    if parts is None:
+        raise ValueError(f"{text} is not a ticket number or a range like 30-35.")
+    first, dash, last = parts.groups()
+    if not dash:
+        return int(first)
+    if not last:
+        raise ValueError(
+            f"{text} has no end: a range names its last ticket, as in 30-35."
+        )
+    span = Range(int(first), int(last))
+    if span.first > span.last:
+        raise ValueError(f"{text} runs backwards: write it {last}-{first}.")
+    return span
 
 
 @dataclass(frozen=True)
@@ -66,6 +107,14 @@ class Session:
 class Skipped:
     number: int
     reason: str
+
+
+@dataclass(frozen=True)
+class Empty:
+    """A range with no open tickets in it: nothing in it started, which fails the
+    call as a skip does."""
+
+    span: Range
 
 
 def _in_progress(ticket: Issue, *, has_worktree: bool) -> list[str]:
@@ -126,10 +175,34 @@ def _new_since_checkout(run: Callable[..., Result]) -> int | None:
     return int(count) if counted.returncode == 0 and count.isdigit() else None
 
 
+def _expand(
+    tickets: Sequence[int | Range], on_board: set[int]
+) -> tuple[list[int], list[Empty]]:
+    """Each ticket in turn, a range giving way to the open tickets within it, and
+    the ranges that held none. A bare number stands, open or not."""
+    numbers: list[int] = []
+    empty: list[Empty] = []
+    for t in tickets:
+        if isinstance(t, int):
+            numbers.append(t)
+            continue
+        within = [n for n in sorted(on_board) if t.first <= n <= t.last]
+        numbers += within
+        if not within:
+            empty.append(Empty(t))
+    return numbers, empty
+
+
 def start_sessions(
-    numbers: Sequence[int], *, runner: Runner, confirm: Callable[[str], bool]
-) -> list[Session | Skipped]:
-    """Start a session on each of `numbers`, or go back to the one it has.
+    tickets: Sequence[int | Range],
+    *,
+    runner: Runner,
+    confirm: Callable[[str], bool],
+) -> list[Session | Skipped | Empty]:
+    """Start a session on each of `tickets`, or go back to the one it has.
+
+    A range stands for the open tickets numbered within it; one with none is
+    reported as `Empty`, ahead of the sessions.
 
     What every ticket needs (the tools, the clone, the board, a fresh
     `origin/main`) is checked once, and its failure raises `WorkError` before
@@ -166,6 +239,14 @@ def start_sessions(
     def tree(n: int) -> Path:
         return root.parent / f"{root.name}.worktrees" / str(n)
 
+    # Only a range needs the board before the worktrees are looked at.
+    board = (
+        load_board(GhClient(runner=runner))
+        if any(isinstance(t, Range) for t in tickets)
+        else None
+    )
+    numbers, empty = _expand(tickets, open_tickets(board) if board else set())
+
     sessions = {
         n: Session(number=n, worktree=tree(n), tmux_session=root.name)
         for n in dict.fromkeys(numbers)
@@ -181,7 +262,7 @@ def start_sessions(
     new = [n for n, s in sessions.items() if s.worktree not in existing]
     commands: dict[int, str | Refused] = {}
     if new:
-        board = load_board(GhClient(runner=runner))
+        board = board or load_board(GhClient(runner=runner))
         commands = {n: starting_command(board, n) for n in new}
         commands = _one_session_per_map(
             board,
@@ -249,6 +330,9 @@ def start_sessions(
         return replace(session, base=base)
 
     return [
-        begin(s, commands[n]) if n in commands else go_back(s)
-        for n, s in sessions.items()
+        *empty,
+        *(
+            begin(s, commands[n]) if n in commands else go_back(s)
+            for n, s in sessions.items()
+        ),
     ]

@@ -95,3 +95,15 @@ def map_of(board: Board, number: int) -> ParentNode | None:
 def map_children(node: ParentNode) -> list[Issue]:
     """Every open child ticket under the map."""
     return _members(node.group)
+
+
+def open_tickets(board: Board) -> set[int]:
+    """The number of every ticket on the board, wherever it sits."""
+    b = board.backlog
+    parents = [*board.maps, *board.specs]
+    return {
+        *(p.issue.number for p in parents),
+        *(t.number for p in parents for t in _members(p.group)),
+        *(t.number for t in [*b.p1, *b.p2_debt, *b.ready, *b.other]),
+        *(t.number for t in b.orphan_wayfinder),
+    }
