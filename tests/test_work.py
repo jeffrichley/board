@@ -891,3 +891,120 @@ def test_work_does_not_ask_because_the_map_itself_is_claimed(
 
     assert result.exit_code == 0, result.output
     assert ASKS not in result.output
+
+
+def test_work_on_a_range_starts_its_open_tickets_and_says_nothing_of_the_gaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #31 and #34 are PRs or closed issues, #33 was never made: none is open.
+    open_ = [30, 32, 35]
+    run = FakeRun({**TOOLS, **_batch(*open_), **gh_world(*map(raw_issue, open_))})
+    result = _work(run, monkeypatch, "30-35")
+
+    assert result.exit_code == 0, result.output
+    assert result.output == "".join(f"{_line(n, 'started')}\n" for n in open_)
+
+
+def test_work_on_a_range_of_one_number_starts_that_ticket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **_batch(30), **gh_world(raw_issue(30))})
+    result = _work(run, monkeypatch, "30-30")
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(30, 'started')}\n"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [("33", "30-35"), ("30-35", "34-40"), ("30", "30-34", "34")],
+    ids=["a number inside a range", "overlapping ranges", "numbers at the ends"],
+)
+def test_work_on_ranges_and_numbers_together_starts_each_ticket_once(
+    monkeypatch: pytest.MonkeyPatch, args: tuple[str, ...]
+) -> None:
+    open_ = [30, 33, 34]
+    run = FakeRun({**TOOLS, **_batch(*open_), **gh_world(*map(raw_issue, open_))})
+    result = _work(run, monkeypatch, *args)
+
+    assert result.exit_code == 0, result.output
+    started = [c[-2] for c in run.calls if c[:3] == ["git", "worktree", "add"]]
+    assert sorted(started) == [tree(n) for n in open_]
+    assert run.calls.count(OPEN_ISSUES) == 1
+
+
+def test_work_on_a_range_skips_a_ticket_that_cannot_start_with_its_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tickets = gh_world(
+        raw_issue(5), raw_issue(6, assignee="alice"), raw_issue(7), blockers={7: [5]}
+    )
+    run = FakeRun({**TOOLS, **_batch(5), **tickets})
+    result = _work(run, monkeypatch, "5-7")
+
+    assert result.exit_code == 1
+    assert _line(5, "started") in result.output
+    assert "#6 is claimed by @alice." in result.output
+    assert "#7 is blocked by #5." in result.output
+    assert _add(6) not in run.calls
+    assert _add(7) not in run.calls
+
+
+def test_work_on_a_range_goes_back_to_a_ticket_that_has_a_worktree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(
+        {
+            **TOOLS,
+            **_batch(9),
+            **gh_world(raw_issue(8), raw_issue(9)),
+            **STARTED,
+            **WINDOW_ALIVE,
+        }
+    )
+    result = _work(run, monkeypatch, "8-9")
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{_line(8, 'running')}\n{_line(9, 'started')}\n"
+
+
+def test_work_on_a_range_with_no_open_tickets_says_so_and_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **CHECKOUT, **BOARD})
+    result = _work(run, monkeypatch, "300-305")
+
+    assert result.exit_code == 1
+    assert "no open tickets in 300-305" in result.output
+    assert _looked_only(run)
+
+
+def test_work_says_which_range_was_empty_and_still_starts_the_rest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({**TOOLS, **_batch(8), **gh_world(raw_issue(8))})
+    result = _work(run, monkeypatch, "8", "300-305")
+
+    assert result.exit_code == 1
+    assert "no open tickets in 300-305" in result.output
+    assert _line(8, "started") in result.output
+
+
+@pytest.mark.parametrize(
+    ("arg", "reason"),
+    [
+        ("35-30", "35-30 runs backwards"),
+        ("30-", "30- has no end"),
+        ("thirty", "thirty is not a ticket number"),
+    ],
+    ids=["reversed", "open-ended", "not a number"],
+)
+def test_work_refuses_what_is_neither_a_ticket_nor_a_range_before_calling_anything(
+    monkeypatch: pytest.MonkeyPatch, arg: str, reason: str
+) -> None:
+    run = FakeRun({})
+    result = _work(run, monkeypatch, "8", arg)
+
+    assert result.exit_code == 2
+    assert reason in result.output
+    assert run.calls == []

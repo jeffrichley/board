@@ -6,6 +6,7 @@ refused with a reason instead.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -43,28 +44,29 @@ def _members(group: TicketGroup) -> list[Issue]:
     return [*group.takeable, *group.claimed, *group.blocked]
 
 
-def _locate(board: Board, number: int) -> tuple[Place, Issue, int | None] | None:
-    """Where `number` sits, the ticket itself, and the map it sits under."""
+Placed = tuple[Place, Issue, int | None]
+
+
+def _placed(board: Board) -> Iterator[Placed]:
+    """Every ticket on the board: where it sits, the ticket, and its map if any."""
     for m in board.maps:
-        if m.issue.number == number:
-            return Place.MAP, m.issue, number
+        yield Place.MAP, m.issue, m.issue.number
         for t in _members(m.group):
-            if t.number == number:
-                return Place.MAP_CHILD, t, m.issue.number
+            yield Place.MAP_CHILD, t, m.issue.number
     for s in board.specs:
-        if s.issue.number == number:
-            return Place.SPEC, s.issue, None
+        yield Place.SPEC, s.issue, None
         for t in _members(s.group):
-            if t.number == number:
-                return Place.SPEC_CHILD, t, None
+            yield Place.SPEC_CHILD, t, None
     b = board.backlog
     for t in b.orphan_wayfinder:
-        if t.number == number:
-            return Place.ORPHAN_WAYFINDER, t, None
+        yield Place.ORPHAN_WAYFINDER, t, None
     for t in [*b.p1, *b.p2_debt, *b.ready, *b.other]:
-        if t.number == number:
-            return Place.BACKLOG, t, None
-    return None
+        yield Place.BACKLOG, t, None
+
+
+def _locate(board: Board, number: int) -> Placed | None:
+    """Where `number` sits, the ticket itself, and the map it sits under."""
+    return next((p for p in _placed(board) if p[1].number == number), None)
 
 
 def starting_command(board: Board, number: int) -> str | Refused:
@@ -95,3 +97,8 @@ def map_of(board: Board, number: int) -> ParentNode | None:
 def map_children(node: ParentNode) -> list[Issue]:
     """Every open child ticket under the map."""
     return _members(node.group)
+
+
+def ticket_numbers(board: Board) -> set[int]:
+    """The number of every ticket on the board, wherever it sits."""
+    return {ticket.number for _, ticket, _ in _placed(board)}
