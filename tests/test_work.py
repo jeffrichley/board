@@ -74,8 +74,8 @@ BASE: World = {
     tuple(VERIFY): (0, "892179c\n", ""),
     tuple(NEW_SINCE): (0, "0\n", ""),
 }
-# What a started #8 says under its line, aligned beneath "started".
-FROM = "    from origin/main @ 892179c"
+# What a started ticket says under its line, aligned beneath "started".
+FROM = "from origin/main @ 892179c"
 REPO: World = {**CHECKOUT, **BASE, tuple(ADD): (0, "", "")}
 RUNNING_SESSION: World = {
     tuple(HAS_SESSION): (0, "", ""),
@@ -147,7 +147,7 @@ def test_work_says_where_the_session_is_and_leaves_you_at_your_prompt(
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 0
-    assert result.output == f"#8  started in {WORKTREE}   tmux board:#8\n{FROM}\n"
+    assert result.output == f"{_line(8, 'started')}\n"
 
 
 def test_work_does_the_same_from_inside_tmux(
@@ -158,7 +158,7 @@ def test_work_does_the_same_from_inside_tmux(
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 0
-    assert result.output == f"#8  started in {WORKTREE}   tmux board:#8\n{FROM}\n"
+    assert result.output == f"{_line(8, 'started')}\n"
     assert run.calls[-1] == NEW_WINDOW
 
 
@@ -171,7 +171,7 @@ def test_work_says_how_far_the_checkout_is_behind_the_base(
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 0, result.output
-    assert result.output.endswith(f"\n{FROM} (2 new since your checkout)\n")
+    assert result.output == f"{_line(8, 'started')} (2 new since your checkout)\n"
 
 
 @pytest.mark.parametrize(
@@ -188,7 +188,7 @@ def test_work_reports_the_base_without_a_count_it_cannot_work_out(
     result = _work(run, monkeypatch)
 
     assert result.exit_code == 0, result.output
-    assert result.output == f"#8  started in {WORKTREE}   tmux board:#8\n{FROM}\n"
+    assert result.output == f"{_line(8, 'started')}\n"
 
 
 def test_work_reports_a_missing_tmux_before_creating_anything(
@@ -567,7 +567,7 @@ def _line(number: int, status: str) -> str:
     """What board says about #number; a started one says its base on a second line."""
     where = f"#{number}  {status} in {tree(number)}   tmux board:#{number}"
     indent = " " * len(f"#{number}  ")
-    return f"{where}\n{indent}{FROM.lstrip()}" if status == "started" else where
+    return f"{where}\n{indent}{FROM}" if status == "started" else where
 
 
 def test_work_on_several_tickets_starts_each_and_says_where_each_one_is(

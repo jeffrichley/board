@@ -34,7 +34,7 @@ class Base:
     commit: str  # abbreviated, as git abbreviates it
     # Commits in the base that the checkout's `main` lacks; None when git couldn't
     # say, as in a checkout with no local `main`.
-    new_since_checkout: int | None = None
+    new_since_checkout: int | None
 
 
 @dataclass(frozen=True)

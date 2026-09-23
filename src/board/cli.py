@@ -73,12 +73,14 @@ def work(
                 f"   tmux {outcome.target}"
             )
             if outcome.base is not None:
-                typer.echo(f"{' ' * (len(outcome.window) + 2)}{_from(outcome.base)}")
+                typer.echo(
+                    f"{' ' * (len(outcome.window) + 2)}{_base_line(outcome.base)}"
+                )
     if skipped:
         raise typer.Exit(code=1)
 
 
-def _from(base: Base) -> str:
+def _base_line(base: Base) -> str:
     """Where a started session's worktree was cut, and what your checkout lacks."""
     new = base.new_since_checkout
     behind = f" ({new} new since your checkout)" if new else ""

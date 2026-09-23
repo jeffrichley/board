@@ -82,8 +82,8 @@ board work 120 121 122
 
 Each ticket is handled on its own. Every one that can start or resume does, and
 gets the same lines it would get alone. A resumed or running ticket reports no
-base: its worktree was cut when its session began. Every one that can't is skipped, and
-board prints it with its reason:
+base: its worktree was cut when its session began. Every one that can't is
+skipped, and board prints it with its reason:
 
 ```
 #120  started in /repos/board.worktrees/120   tmux board:#120
