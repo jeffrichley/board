@@ -43,7 +43,7 @@ A ticket with at least one open blocker.
 _Avoid_: waiting, stuck
 
 **Range**:
-Two ticket numbers joined by a dash, `30-35`, standing for the tickets numbered within it: the open issues in the span, with pull requests, closed issues and gaps dropped silently. A range is worked exactly as if its tickets were named one by one.
+Two ticket numbers joined by a dash, `30-35`, standing for the tickets numbered within it: the open issues between the two numbers, with pull requests, closed issues and gaps dropped silently. A range is worked exactly as if its tickets were named one by one.
 _Avoid_: span, batch, interval
 
 **Frontier**:

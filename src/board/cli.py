@@ -15,7 +15,7 @@ from board.work import (
     Empty,
     Skipped,
     WorkError,
-    parse_ticket,
+    parse_ticket_or_range,
     start_sessions,
 )
 
@@ -69,7 +69,7 @@ def work(
         return yes or typer.confirm(question, default=False)
 
     try:
-        parsed = [parse_ticket(t) for t in tickets]
+        parsed = [parse_ticket_or_range(t) for t in tickets]
     except ValueError as e:
         raise typer.BadParameter(str(e), param_hint="TICKET") from e
     try:
@@ -81,7 +81,7 @@ def work(
     for outcome in outcomes:
         if isinstance(outcome, Empty):
             skipped = True
-            err_console.print(f"[red]no open tickets in {outcome.span}[/red]")
+            err_console.print(f"[red]no open tickets in {outcome.range}[/red]")
         elif isinstance(outcome, Skipped):
             skipped = True
             # Unwrapped: board adds no line breaks of its own to a reason.

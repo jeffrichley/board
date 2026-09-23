@@ -999,7 +999,7 @@ def test_work_says_which_range_was_empty_and_still_starts_the_rest(
     ],
     ids=["reversed", "open-ended", "not a number"],
 )
-def test_work_refuses_a_malformed_range_before_calling_anything(
+def test_work_refuses_what_is_neither_a_ticket_nor_a_range_before_calling_anything(
     monkeypatch: pytest.MonkeyPatch, arg: str, reason: str
 ) -> None:
     run = FakeRun({})

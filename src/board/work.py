@@ -24,8 +24,8 @@ from board.route import (
     Refused,
     map_children,
     map_of,
-    open_tickets,
     starting_command,
+    ticket_numbers,
 )
 from board.run import Result, Runner
 from board.worktree import live_windows, worktree_paths
@@ -50,7 +50,7 @@ class Range:
         return f"{self.first}-{self.last}"
 
 
-def parse_ticket(text: str) -> int | Range:
+def parse_ticket_or_range(text: str) -> int | Range:
     """A ticket number, or a range like `30-35`. A malformed one raises ValueError."""
     parts = re.fullmatch(r"(\d+)(?:(-)(\d*))?", text, re.ASCII)
     if parts is None:
@@ -62,10 +62,9 @@ def parse_ticket(text: str) -> int | Range:
         raise ValueError(
             f"{text} has no end: a range names its last ticket, as in 30-35."
         )
-    span = Range(int(first), int(last))
-    if span.first > span.last:
+    if int(first) > int(last):
         raise ValueError(f"{text} runs backwards: write it {last}-{first}.")
-    return span
+    return Range(int(first), int(last))
 
 
 @dataclass(frozen=True)
@@ -114,7 +113,7 @@ class Empty:
     """A range with no open tickets in it: nothing in it started, which fails the
     call as a skip does."""
 
-    span: Range
+    range: Range
 
 
 def _in_progress(ticket: Issue, *, has_worktree: bool) -> list[str]:
@@ -245,7 +244,7 @@ def start_sessions(
         if any(isinstance(t, Range) for t in tickets)
         else None
     )
-    numbers, empty = _expand(tickets, open_tickets(board) if board else set())
+    numbers, empty = _expand(tickets, ticket_numbers(board) if board else set())
 
     sessions = {
         n: Session(number=n, worktree=tree(n), tmux_session=root.name)
