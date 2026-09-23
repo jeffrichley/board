@@ -1,5 +1,6 @@
 import copy
 import json
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,7 @@ from typer.testing import CliRunner
 from typer.testing import Result as CliResult
 
 from board.cli import app
-from board.gh import BOARD_QUERY
+from board.gh import BOARD_QUERY, FOLLOW_QUERY
 from board.run import Result
 
 Answer = tuple[int, str, str]
@@ -17,6 +18,8 @@ World = dict[tuple[str, ...], Answer | list[Answer]]
 
 SLUG = "o/r"
 REPO_VIEW = ["gh", "repo", "view", "--json", "nameWithOwner"]
+# What `gh repo view` answers in `o/r`.
+IN_REPO: Answer = (0, json.dumps({"nameWithOwner": SLUG}), "")
 
 
 def board_query(after: str | None = None) -> list[str]:
@@ -27,6 +30,20 @@ def board_query(after: str | None = None) -> list[str]:
 
 
 OPEN_ISSUES = board_query()
+# The board query answered with a GraphQL error, as `gh` passes one through.
+NO_SUCH_REPO: Answer = (
+    0,
+    json.dumps({"errors": [{"message": "Could not resolve to a Repository"}]}),
+    "",
+)
+
+
+def follow_query(field: str, number: int, after: str) -> list[str]:
+    """The call that follows #`number`'s `field` list in `o/r` past the page `after`."""
+    call = ["gh", "api", "graphql", "-f", f"query={FOLLOW_QUERY[field]}"]
+    call += ["-f", "owner=o", "-f", "name=r", "-F", f"number={number}"]
+    return call + ["-f", f"cursor={after}"]
+
 
 FETCH = ["git", "fetch", "origin"]
 
@@ -88,6 +105,17 @@ def connection(*nodes: dict[str, Any], after: str | None = None) -> dict[str, An
     return {"pageInfo": info, "nodes": list(nodes)}
 
 
+def linked(
+    *numbers: int,
+    closed: Collection[int] = (),
+    after: str | None = None,
+) -> dict[str, Any]:
+    """A page of sub-issues or blockers: open, bar the `closed` ones."""
+    states = {n: "CLOSED" if n in closed else "OPEN" for n in numbers}
+    nodes = ({"number": n, "state": s} for n, s in states.items())
+    return connection(*nodes, after=after)
+
+
 def issues_page(*issues: dict[str, Any], after: str | None = None) -> str:
     """One page of the board query's answer, followed by another page `after`."""
     page = connection(*issues, after=after)
@@ -108,22 +136,18 @@ def gh_world(
     children = children or {}
     blockers = blockers or {}
     open_nums = {i["number"] for i in issues}
-
-    def linked(nums: list[int]) -> dict[str, Any]:
-        states = {n: "OPEN" if n in open_nums else "CLOSED" for n in nums}
-        return connection(*({"number": n, "state": s} for n, s in states.items()))
-
     nodes = copy.deepcopy(issues)
     for node in nodes:
         kids = children.get(node["number"], [])
-        node["subIssues"] = linked(kids)
+        node["subIssues"] = linked(*kids, closed=set(kids) - open_nums)
         node["subIssuesSummary"] = {
             "total": len(kids),
             "completed": sum(k not in open_nums for k in kids),
         }
-        node["blockedBy"] = linked(blockers.get(node["number"], []))
+        bs = blockers.get(node["number"], [])
+        node["blockedBy"] = linked(*bs, closed=set(bs) - open_nums)
     return {
-        tuple(REPO_VIEW): (0, json.dumps({"nameWithOwner": SLUG}), ""),
+        tuple(REPO_VIEW): IN_REPO,
         tuple(OPEN_ISSUES): (0, issues_page(*nodes), ""),
     }
 

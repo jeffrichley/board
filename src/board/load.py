@@ -7,5 +7,7 @@ from board.model import Board, build_board
 def load_board(client: GhClient | None = None) -> Board:
     client = client or GhClient()
     slug = client.repo_slug()
-    got = client.open_issues(slug)
-    return build_board(slug, got.issues, got.children_of, got.blockers_of)
+    open_issues = client.open_issues(slug)
+    return build_board(
+        slug, open_issues.issues, open_issues.children_of, open_issues.blockers_of
+    )

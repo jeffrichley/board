@@ -1,27 +1,22 @@
 import json
-from typing import Any
 
 import pytest
 
-from board.gh import FOLLOW_QUERY, GhClient, GhError
+from board.gh import GhClient, GhError
 from board.load import load_board
 from helpers import (
+    IN_REPO,
+    NO_SUCH_REPO,
     OPEN_ISSUES,
     REPO_VIEW,
     FakeRun,
     board_query,
-    connection,
+    follow_query,
     gh_world,
     issues_page,
+    linked,
     raw_issue,
 )
-
-REPO = (0, json.dumps({"nameWithOwner": "o/r"}), "")
-
-
-def _linked(*numbers: int, after: str | None = None) -> dict[str, Any]:
-    """A page of sub-issues or blockers, all open."""
-    return connection(*({"number": n, "state": "OPEN"} for n in numbers), after=after)
 
 
 def test_load_asks_github_once_for_the_whole_board() -> None:
@@ -88,7 +83,7 @@ def test_load_names_the_latest_blocker_first() -> None:
 def test_load_pages_through_more_than_a_hundred_open_issues() -> None:
     run = FakeRun(
         {
-            tuple(REPO_VIEW): REPO,
+            tuple(REPO_VIEW): IN_REPO,
             tuple(board_query()): (0, issues_page(raw_issue(1), after="c1"), ""),
             tuple(board_query("c1")): (0, issues_page(raw_issue(2), after="c2"), ""),
             tuple(board_query("c2")): (0, issues_page(raw_issue(3)), ""),
@@ -101,42 +96,53 @@ def test_load_pages_through_more_than_a_hundred_open_issues() -> None:
     assert len(run.calls) == 4
 
 
-@pytest.mark.parametrize("field", ["subIssues", "blockedBy"])
-def test_load_follows_a_list_longer_than_one_page(field: str) -> None:
+def test_load_follows_a_sub_issue_list_longer_than_one_page() -> None:
     parent = raw_issue(10, "wayfinder:map")
-    parent["subIssues"] = _linked(11)
-    parent["blockedBy"] = _linked()
-    parent[field] = _linked(11, after="k1")
-    rest = {"data": {"repository": {"issue": {field: _linked(12)}}}}
-    follow = ["gh", "api", "graphql", "-f", f"query={FOLLOW_QUERY[field]}"]
-    follow += ["-f", "owner=o", "-f", "name=r", "-F", "number=10", "-f", "cursor=k1"]
+    parent["subIssues"] = linked(11, after="k1")
+    rest = {"data": {"repository": {"issue": {"subIssues": linked(12)}}}}
     run = FakeRun(
         {
-            tuple(REPO_VIEW): REPO,
+            tuple(REPO_VIEW): IN_REPO,
             tuple(OPEN_ISSUES): (
                 0,
                 issues_page(parent, raw_issue(11), raw_issue(12)),
                 "",
             ),
-            tuple(follow): (0, json.dumps(rest), ""),
+            tuple(follow_query("subIssues", 10, "k1")): (0, json.dumps(rest), ""),
         }
     )
 
     board = load_board(GhClient(runner=run))
 
-    if field == "subIssues":
-        [the_map] = board.maps
-        assert [i.number for i in the_map.group.takeable] == [11, 12]
-    else:
-        assert board.open_blockers == {10: [12, 11]}
+    [the_map] = board.maps
+    assert [i.number for i in the_map.group.takeable] == [11, 12]
+    assert len(run.calls) == 3
+
+
+def test_load_follows_a_blocker_list_longer_than_one_page() -> None:
+    blocked = raw_issue(10)
+    blocked["blockedBy"] = linked(11, after="k1")
+    rest = {"data": {"repository": {"issue": {"blockedBy": linked(12)}}}}
+    run = FakeRun(
+        {
+            tuple(REPO_VIEW): IN_REPO,
+            tuple(OPEN_ISSUES): (
+                0,
+                issues_page(blocked, raw_issue(11), raw_issue(12)),
+                "",
+            ),
+            tuple(follow_query("blockedBy", 10, "k1")): (0, json.dumps(rest), ""),
+        }
+    )
+
+    board = load_board(GhClient(runner=run))
+
+    assert board.open_blockers == {10: [12, 11]}
     assert len(run.calls) == 3
 
 
 def test_load_reports_a_graphql_error_in_the_answer() -> None:
-    errors = {"errors": [{"message": "Could not resolve to a Repository"}]}
-    run = FakeRun(
-        {tuple(REPO_VIEW): REPO, tuple(OPEN_ISSUES): (0, json.dumps(errors), "")}
-    )
+    run = FakeRun({tuple(REPO_VIEW): IN_REPO, tuple(OPEN_ISSUES): NO_SUCH_REPO})
 
     with pytest.raises(GhError, match="Could not resolve to a Repository"):
         load_board(GhClient(runner=run))
@@ -144,7 +150,7 @@ def test_load_reports_a_graphql_error_in_the_answer() -> None:
 
 def test_load_reports_a_failed_graphql_call_without_the_query() -> None:
     run = FakeRun(
-        {tuple(REPO_VIEW): REPO, tuple(OPEN_ISSUES): (1, "", "gh: API rate limit")}
+        {tuple(REPO_VIEW): IN_REPO, tuple(OPEN_ISSUES): (1, "", "gh: API rate limit")}
     )
 
     with pytest.raises(GhError, match="API rate limit") as caught:

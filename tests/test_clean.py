@@ -3,7 +3,17 @@ import json
 import pytest
 from typer.testing import Result as CliResult
 
-from helpers import FETCH, REPO_VIEW, SLUG, FakeRun, World, invoke, porcelain, tree
+from helpers import (
+    FETCH,
+    IN_REPO,
+    REPO_VIEW,
+    SLUG,
+    FakeRun,
+    World,
+    invoke,
+    porcelain,
+    tree,
+)
 
 LIST = ["git", "worktree", "list", "--porcelain"]
 WINDOWS = ["tmux", "list-windows", "-t", "=board", "-F", "#{window_name}"]
@@ -40,7 +50,7 @@ def _world(
             "",
         ),
         tuple(FETCH): (0, "", ""),
-        tuple(REPO_VIEW): (0, json.dumps({"nameWithOwner": SLUG}), ""),
+        tuple(REPO_VIEW): IN_REPO,
         tuple(WINDOWS): (0, "".join(f"#{n}\n" for n in windows), ""),
     }
     for n in numbers:

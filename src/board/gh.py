@@ -54,7 +54,7 @@ class OpenIssues:
     blockers_of: dict[int, list[int]]  # open blockers only
 
 
-def _as_model_reads(node: dict[str, Any], open_blockers: int) -> dict[str, Any]:
+def _as_rest_issue(node: dict[str, Any], open_blockers: int) -> dict[str, Any]:
     """A GraphQL issue in the shape `Issue.from_raw` reads.
 
     The board shows one assignee, so the first stands for all of them.
@@ -115,8 +115,8 @@ class GhClient:
             page = data["repository"]["issues"]
             for node in page["nodes"]:
                 num = node["number"]
-                kids = self._all(node, "subIssues", repo)
-                blockers = self._all(node, "blockedBy", repo)
+                kids = self._every_linked(node, "subIssues", repo)
+                blockers = self._every_linked(node, "blockedBy", repo)
                 # GraphQL lists blockers oldest first; the board names the newest
                 # first, as the REST list it was built on did.
                 open_blockers = [
@@ -126,12 +126,12 @@ class GhClient:
                     children_of[num] = [k["number"] for k in kids]
                 if open_blockers:
                     blockers_of[num] = open_blockers
-                issues.append(_as_model_reads(node, len(open_blockers)))
+                issues.append(_as_rest_issue(node, len(open_blockers)))
             if not page["pageInfo"]["hasNextPage"]:
                 return OpenIssues(issues, children_of, blockers_of)
             after = ["-f", f"cursor={page['pageInfo']['endCursor']}"]
 
-    def _all(
+    def _every_linked(
         self, node: dict[str, Any], field: str, repo: list[str]
     ) -> list[dict[str, Any]]:
         """Every entry in `node`'s `field` list, following it past its first page."""

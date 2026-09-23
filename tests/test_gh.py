@@ -1,13 +1,11 @@
-import json
-
 import pytest
 
 from board.gh import GhClient, GhError
-from helpers import REPO_VIEW, FakeRun
+from helpers import IN_REPO, REPO_VIEW, FakeRun
 
 
 def test_repo_slug_is_the_repo_gh_is_in() -> None:
-    run = FakeRun({tuple(REPO_VIEW): (0, json.dumps({"nameWithOwner": "o/r"}), "")})
+    run = FakeRun({tuple(REPO_VIEW): IN_REPO})
     assert GhClient(runner=run).repo_slug() == "o/r"
 
 
