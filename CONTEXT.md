@@ -55,3 +55,11 @@ _Avoid_: run, job, agent, worker
 **Worktree**:
 A git worktree board makes for one ticket, so its session is isolated from your checkout and from other sessions. The session's work leaves it through the repo's normal route to `main`.
 _Avoid_: workspace, sandbox, clone
+
+**Checkout**:
+The clone you work in yourself, and the one you run board from. A session never touches it, and its branches and its `main` say nothing about where a session starts.
+_Avoid_: repo, local, working copy
+
+**Base**:
+The commit a worktree starts from: `origin/main`, as of the fetch board makes when it starts a session. Never the checkout's `main`, so a stale checkout can't hold a session back — and work that hasn't merged isn't in a new session's base, however finished it is.
+_Avoid_: head, latest, trunk
