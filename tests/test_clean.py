@@ -8,6 +8,7 @@ from helpers import (
     IN_REPO,
     REPO_VIEW,
     SLUG,
+    WORKTREES,
     FakeRun,
     World,
     invoke,
@@ -15,7 +16,6 @@ from helpers import (
     tree,
 )
 
-LIST = ["git", "worktree", "list", "--porcelain"]
 WINDOWS = ["tmux", "list-windows", "-t", "=board", "-F", "#{window_name}"]
 
 
@@ -44,7 +44,7 @@ def _world(
 ) -> World:
     """A repo with a worktree per number, each safe unless named otherwise."""
     world: World = {
-        tuple(LIST): (
+        tuple(WORKTREES): (
             0,
             porcelain(*(f"/repos/board.worktrees/{n}" for n in numbers)),
             "",
@@ -129,22 +129,22 @@ def test_clean_judges_each_worktree_on_its_own(
 def test_clean_with_no_worktrees_says_so_and_asks_nothing_else(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = FakeRun({tuple(LIST): (0, porcelain(), "")})
+    run = FakeRun({tuple(WORKTREES): (0, porcelain(), "")})
     result = _clean(run, monkeypatch)
 
     assert result.exit_code == 0
     assert "no worktrees" in result.output.lower()
-    assert run.calls == [LIST]
+    assert run.calls == [WORKTREES]
 
 
 def test_clean_leaves_worktrees_board_did_not_make_alone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = FakeRun({tuple(LIST): (0, porcelain("/elsewhere/spike"), "")})
+    run = FakeRun({tuple(WORKTREES): (0, porcelain("/elsewhere/spike"), "")})
     result = _clean(run, monkeypatch)
 
     assert result.exit_code == 0
-    assert run.calls == [LIST]
+    assert run.calls == [WORKTREES]
 
 
 def test_clean_counts_no_tmux_server_as_no_session(
@@ -223,7 +223,7 @@ def test_clean_keeps_a_worktree_not_named_for_a_ticket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     world: World = {
-        tuple(LIST): (0, porcelain("/repos/board.worktrees/spike"), ""),
+        tuple(WORKTREES): (0, porcelain("/repos/board.worktrees/spike"), ""),
         tuple(FETCH): (0, "", ""),
         tuple(WINDOWS): (1, "", "no server running"),
         tuple(_status("spike")): (0, "", ""),
@@ -237,7 +237,7 @@ def test_clean_keeps_a_worktree_not_named_for_a_ticket(
 
 
 def test_clean_reports_a_failed_worktree_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    run = FakeRun({tuple(LIST): (128, "", "not a git repository")})
+    run = FakeRun({tuple(WORKTREES): (128, "", "not a git repository")})
     result = _clean(run, monkeypatch)
 
     assert result.exit_code == 1

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from board.gh import GhClient
 from board.run import Result, Runner
-from board.worktree import live_windows, worktree_paths
+from board.worktree import live_windows, worktree_home, worktree_paths
 
 
 class CleanError(Exception):
@@ -42,8 +42,7 @@ def clean(*, runner: Runner) -> list[Outcome]:
     if listed.returncode != 0:
         raise CleanError(f"could not list worktrees\n{listed.stderr.strip()}")
     main, *others = worktree_paths(listed.stdout)
-    home = main.parent / f"{main.name}.worktrees"
-    ours = [w for w in others if w.parent == home]
+    ours = [w for w in others if w.parent == worktree_home(main)]
     if not ours:
         return []
 
