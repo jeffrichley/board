@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from collections.abc import Collection
 from dataclasses import dataclass, field, replace
+from enum import StrEnum
 from typing import Any
 
 MAP_LABEL = "wayfinder:map"
@@ -49,6 +50,9 @@ class TicketGroup:
     claimed: list[Issue] = field(default_factory=list)
     blocked: list[Issue] = field(default_factory=list)
 
+    def count(self) -> int:
+        return len(self.takeable) + len(self.claimed) + len(self.blocked)
+
 
 @dataclass
 class ParentNode:
@@ -67,6 +71,18 @@ class Backlog:
     orphan_wayfinder: list[Issue] = field(default_factory=list)
     other: list[Issue] = field(default_factory=list)
 
+    def count(self) -> int:
+        groups = (self.p1, self.p2_debt, self.ready, self.orphan_wayfinder, self.other)
+        return sum(len(g) for g in groups)
+
+
+class Lane(StrEnum):
+    """The board's three lanes, in the order it shows them."""
+
+    WAYFINDING = "wayfinding"
+    SPECS = "specs"
+    BACKLOG = "backlog"
+
 
 @dataclass
 class Board:
@@ -76,6 +92,25 @@ class Board:
     specs: list[ParentNode]
     backlog: Backlog
     open_blockers: dict[int, list[int]] = field(default_factory=dict)
+    # What the board has been narrowed by, in words for its header. Empty: not at all.
+    filters: tuple[str, ...] = ()
+
+    def ticket_count(self) -> int:
+        """How many tickets the board holds, each map and spec among them."""
+        parents = self.maps + self.specs
+        return sum(1 + p.group.count() for p in parents) + self.backlog.count()
+
+    def only(self, lanes: Collection[Lane]) -> Board:
+        """This board holding only `lanes`. Every lane leaves it as it is."""
+        if set(lanes) >= set(Lane):
+            return self
+        return replace(
+            self,
+            maps=self.maps if Lane.WAYFINDING in lanes else [],
+            specs=self.specs if Lane.SPECS in lanes else [],
+            backlog=self.backlog if Lane.BACKLOG in lanes else Backlog(),
+            filters=self.filters + tuple(lane for lane in Lane if lane in lanes),
+        )
 
 
 def labels_of(raw: dict[str, Any]) -> list[str]:

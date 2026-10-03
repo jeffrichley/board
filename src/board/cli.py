@@ -8,6 +8,7 @@ from rich.console import Console
 from board.clean import CleanError, clean
 from board.gh import GhClient, GhError
 from board.load import load_board
+from board.model import Lane
 from board.render import render_board
 from board.run import default_runner
 from board.work import (
@@ -30,11 +31,21 @@ err_console = Console(stderr=True)
 def main(ctx: typer.Context) -> None:
     """Bare `board` shows the board."""
     if ctx.invoked_subcommand is None:
-        show()
+        show(lanes=[])
 
 
 @app.command(short_help="Show the wayfinding / specs / backlog board. (default)")
-def show() -> None:
+def show(
+    lanes: Annotated[
+        list[Lane],
+        typer.Argument(
+            metavar="[LANE]...",
+            case_sensitive=False,
+            show_default=False,
+            help="Show only these lanes. None means all three.",
+        ),
+    ] = [],  # noqa: B006 - Typer reads the default, never mutates it
+) -> None:
     """Show the wayfinding / specs / backlog board.
 
     Open tickets nested by Matt Pocock skill workflows. Bare `board` does the same.
@@ -53,7 +64,7 @@ def show() -> None:
     except GhError as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
-    render_board(board)
+    render_board(board.only(lanes or Lane))
 
 
 @app.command()

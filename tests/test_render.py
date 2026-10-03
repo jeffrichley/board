@@ -6,7 +6,7 @@ from rich.console import Console
 
 from board.gh import GhClient
 from board.load import load_board
-from board.model import Backlog, Board, Issue, ParentNode, TicketGroup
+from board.model import Backlog, Board, Issue, Lane, ParentNode, TicketGroup
 from board.render import render_board
 from helpers import FakeRun, gh_world, raw_issue
 
@@ -132,6 +132,67 @@ def test_backlog_unclaimed_ticket_renders_plain(group: str) -> None:
     line = _rendered_backlog_line(group, _issue(121, "Free", "P1"))
     assert "@" not in line
     assert "\x1b[33m" not in line
+
+
+def _one_of_each_lane() -> Board:
+    """A board with one map of two tickets, one spec of one, and two in backlog."""
+    return Board(
+        slug="o/r",
+        open_count=7,
+        maps=[
+            ParentNode(
+                issue=_issue(10, "The Map", "wayfinder:map"),
+                group=TicketGroup(takeable=[_issue(11, "Decide")]),
+                edges={},
+                blocks={},
+            )
+        ],
+        specs=[
+            ParentNode(
+                issue=_issue(30, "The Spec"),
+                group=TicketGroup(claimed=[_issue(31, "Build", assignee="jeff")]),
+                edges={},
+                blocks={},
+            )
+        ],
+        backlog=Backlog(p1=[_issue(1, "Urgent", "P1")], other=[_issue(2, "Misc")]),
+    )
+
+
+def test_an_unfiltered_board_counts_only_what_is_open() -> None:
+    text = _render(_one_of_each_lane())
+    assert "o/r — 7 open\n" in text
+    assert " of " not in text
+
+
+def test_a_lane_filter_shows_only_that_lane_and_counts_it_against_the_repo() -> None:
+    text = _render(_one_of_each_lane().only([Lane.BACKLOG]))
+    assert "o/r — 2 of 7 open (backlog)" in text
+    assert "BACKLOG" in text and "#1  " in text
+    assert "WAYFINDING" not in text and "SPECS" not in text
+
+
+def test_lanes_render_in_board_order_and_count_their_parents() -> None:
+    text = _render(_one_of_each_lane().only([Lane.SPECS, Lane.WAYFINDING]))
+    assert "o/r — 4 of 7 open (wayfinding, specs)" in text
+    assert text.index("WAYFINDING") < text.index("SPECS")
+    assert "BACKLOG" not in text
+
+
+def test_every_lane_is_no_filter_at_all() -> None:
+    board = _one_of_each_lane()
+    assert _render(board.only(list(Lane))) == _render(board)
+
+
+def test_a_filter_that_matches_nothing_still_prints_its_header() -> None:
+    board = _one_of_each_lane()
+    board.specs = []
+    assert _render(board.only([Lane.SPECS])).strip() == "o/r — 0 of 7 open (specs)"
+
+
+def test_a_repo_with_no_open_issues_says_so_whatever_the_filter() -> None:
+    board = Board(slug="o/r", open_count=0, maps=[], specs=[], backlog=Backlog())
+    assert _render(board.only([Lane.SPECS])).strip() == "o/r — no open issues"
 
 
 def test_a_blocker_with_a_worktree_is_coloured_as_claimed() -> None:

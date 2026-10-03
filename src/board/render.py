@@ -104,6 +104,15 @@ def _add_parent(tree: Tree, parent: ParentNode, title_style: str) -> None:
             sub.add(_ticket_line(issue, kind="blocked", parent=parent))
 
 
+def _header(board: Board) -> str:
+    """The repo and what's open in it: `N of M open (filters)` once narrowed."""
+    head = f"[bold]{board.slug}[/bold] — "
+    if not board.filters:
+        return head + f"{board.open_count} open"
+    of = f"{board.ticket_count()} of {board.open_count} open"
+    return head + f"{of} ({', '.join(board.filters)})"
+
+
 def render_board(board: Board, console: Console | None = None) -> None:
     console = console or Console()
     if board.open_count == 0:
@@ -111,7 +120,7 @@ def render_board(board: Board, console: Console | None = None) -> None:
         return
 
     console.print()
-    console.print(f"[bold]{board.slug}[/bold] — {board.open_count} open")
+    console.print(_header(board))
     console.print()
 
     if board.maps:
