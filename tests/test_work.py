@@ -8,6 +8,7 @@ from helpers import (
     FETCH,
     OPEN_ISSUES,
     REPO_VIEW,
+    WORKTREES,
     FakeRun,
     World,
     gh_world,
@@ -26,7 +27,6 @@ CLAUDE = shlex.join(
 TMUX_V = ["tmux", "-V"]
 CLAUDE_V = ["claude", "--version"]
 TOPLEVEL = ["git", "rev-parse", "--show-toplevel"]
-WORKTREES = ["git", "worktree", "list", "--porcelain"]
 VERIFY = ["git", "rev-parse", "--verify", "--short", "origin/main"]
 # What the base has that the checkout's `main` doesn't.
 NEW_SINCE = ["git", "rev-list", "--count", "main..origin/main"]

@@ -57,8 +57,8 @@ def _ticket_line(issue: Issue, *, kind: str, parent: ParentNode | None = None) -
         if u:
             extra.append(f"  unblocks {u}", style="dim")
     elif kind == "claimed":
-        who = issue.assignee or "?"
-        extra.append(f"  @{who}", style="yellow")
+        taken_by = f"@{issue.assignee}" if issue.assignee else "has a worktree"
+        extra.append(f"  {taken_by}", style="yellow")
     elif kind == "blocked" and parent is not None:
         extra.append_text(_blocker_line(issue, parent))
     t.append(extra)

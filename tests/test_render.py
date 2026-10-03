@@ -1,10 +1,14 @@
 import dataclasses
+import re
 
 import pytest
 from rich.console import Console
 
+from board.gh import GhClient
+from board.load import load_board
 from board.model import Backlog, Board, Issue, ParentNode, TicketGroup
 from board.render import render_board
+from helpers import FakeRun, gh_world, raw_issue
 
 
 def _issue(n: int, title: str, *labels: str, assignee: str | None = None) -> Issue:
@@ -129,3 +133,16 @@ def test_backlog_unclaimed_ticket_renders_plain(group: str) -> None:
     line = _rendered_backlog_line(group, _issue(121, "Free", "P1"))
     assert "@" not in line
     assert "\x1b[33m" not in line
+
+
+def test_a_blocker_with_a_worktree_is_coloured_as_claimed() -> None:
+    # A spec, #1: #3 waits on #2, which is unclaimed but has a worktree.
+    world = gh_world(
+        *(raw_issue(n) for n in (1, 2, 3)), children={1: [2, 3]}, blockers={3: [2]}
+    )
+    board = load_board(GhClient(runner=FakeRun(world)), worktrees={2})
+    console = Console(record=True, width=120, force_terminal=True)
+    render_board(board, console=console)
+    ansi = console.export_text(clear=False, styles=True)
+    line = next(ln for ln in ansi.splitlines() if "<- " in ln)
+    assert re.search(r"\x1b\[(\d;)?33m#2", line)  # yellow, as a claimed one reads
