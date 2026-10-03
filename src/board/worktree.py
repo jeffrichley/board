@@ -16,7 +16,7 @@ def worktree_paths(porcelain: str) -> list[Path]:
     ]
 
 
-def home(main: Path) -> Path:
+def worktree_home(main: Path) -> Path:
     """Where board puts the worktrees of the clone whose main checkout is `main`."""
     return main.parent / f"{main.name}.worktrees"
 
@@ -24,7 +24,11 @@ def home(main: Path) -> Path:
 def ticket_worktrees(porcelain: str) -> set[int]:
     """The tickets with a worktree board made, from `git worktree list --porcelain`."""
     main, *others = worktree_paths(porcelain)
-    return {int(w.name) for w in others if w.parent == home(main) and w.name.isdigit()}
+    return {
+        int(w.name)
+        for w in others
+        if w.parent == worktree_home(main) and w.name.isdigit()
+    }
 
 
 def live_windows(runner: Runner, tmux_session: str) -> set[str]:

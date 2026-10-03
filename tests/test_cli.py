@@ -46,8 +46,9 @@ def section(output: str, heading: str) -> str:
     lines = plain(output).splitlines()
     start = next(i for i, ln in enumerate(lines) if heading in ln)
     rest = lines[start + 1 :]
+    headings = ("TAKEABLE", "CLAIMED", "BLOCKED")
     end = next(
-        (i for i, ln in enumerate(rest) if re.search(r"[A-Z]{6,}", ln)), len(rest)
+        (i for i, ln in enumerate(rest) if any(h in ln for h in headings)), len(rest)
     )
     return "\n".join(rest[:end])
 
@@ -137,6 +138,15 @@ def test_a_ticket_with_no_worktree_shows_as_takeable(
     assert "#2" in takeable and "#4" in takeable
     assert "CLAIMED" not in plain(result.output)
     assert "has a worktree" not in plain(result.output)
+
+
+def test_a_blocked_ticket_with_a_worktree_stays_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = shown(*SPEC, worktrees=(3,), children=CHILDREN, blockers=BLOCKERS)
+    result = invoke(FakeRun(world), monkeypatch, "show")
+    assert "#3" in section(result.output, "BLOCKED")
+    assert "CLAIMED" not in plain(result.output)
 
 
 def test_a_worktree_board_did_not_make_leaves_the_ticket_takeable(

@@ -48,10 +48,11 @@ def test_render_includes_lanes_and_colors() -> None:
     assert "WAYFINDING" in html
 
 
-def _render(board: Board) -> str:
+def _render(board: Board, *, styles: bool = False) -> str:
+    """`board` as rendered, with its ANSI styling if `styles`."""
     console = Console(record=True, width=120, force_terminal=True)
     render_board(board, console=console)
-    return console.export_text(clear=False)
+    return console.export_text(clear=False, styles=styles)
 
 
 def test_spec_lane_shows_note_claimed_and_what_takeable_unblocks() -> None:
@@ -115,9 +116,7 @@ def _rendered_backlog_line(group: str, issue: Issue) -> str:
         specs=[],
         backlog=Backlog(**{group: [issue]}),
     )
-    console = Console(record=True, width=120, force_terminal=True)
-    render_board(board, console=console)
-    ansi = console.export_text(clear=False, styles=True)
+    ansi = _render(board, styles=True)
     return next(ln for ln in ansi.splitlines() if f"#{issue.number}" in ln)
 
 
@@ -141,8 +140,5 @@ def test_a_blocker_with_a_worktree_is_coloured_as_claimed() -> None:
         *(raw_issue(n) for n in (1, 2, 3)), children={1: [2, 3]}, blockers={3: [2]}
     )
     board = load_board(GhClient(runner=FakeRun(world)), worktrees={2})
-    console = Console(record=True, width=120, force_terminal=True)
-    render_board(board, console=console)
-    ansi = console.export_text(clear=False, styles=True)
-    line = next(ln for ln in ansi.splitlines() if "<- " in ln)
+    line = next(ln for ln in _render(board, styles=True).splitlines() if "<- " in ln)
     assert re.search(r"\x1b\[(\d;)?33m#2", line)  # yellow, as a claimed one reads
