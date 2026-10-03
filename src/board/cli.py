@@ -19,6 +19,7 @@ from board.work import (
     parse_ticket_or_range,
     start_sessions,
 )
+from board.worktree import ticket_worktrees
 
 app = typer.Typer(
     add_completion=False, help="Show the wayfinding / specs / backlog board."
@@ -49,8 +50,17 @@ def show(
 
     Open tickets nested by Matt Pocock skill workflows. Bare `board` does the same.
     """
+    # A ticket with a worktree has a session, so it isn't takeable.
+    listing = default_runner(["git", "worktree", "list", "--porcelain"])
+    if listing.returncode != 0:
+        err_console.print(
+            f"[red]could not list worktrees\n{listing.stderr.strip()}[/red]"
+        )
+        raise typer.Exit(code=1)
     try:
-        board = load_board(GhClient(runner=default_runner))
+        board = load_board(
+            GhClient(runner=default_runner), ticket_worktrees(listing.stdout)
+        )
     except GhError as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e

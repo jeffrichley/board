@@ -28,7 +28,7 @@ from board.route import (
     ticket_numbers,
 )
 from board.run import Result, Runner
-from board.worktree import live_windows, worktree_paths
+from board.worktree import live_windows, worktree_home, worktree_paths
 
 
 class WorkError(Exception):
@@ -236,7 +236,7 @@ def start_sessions(
     )
 
     def tree(n: int) -> Path:
-        return root.parent / f"{root.name}.worktrees" / str(n)
+        return worktree_home(root) / str(n)
 
     # Only a range needs the board before the worktrees are looked at.
     board = (

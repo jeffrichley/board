@@ -46,6 +46,7 @@ def follow_query(field: str, number: int, after: str) -> list[str]:
 
 
 FETCH = ["git", "fetch", "origin"]
+WORKTREES = ["git", "worktree", "list", "--porcelain"]
 
 
 class FakeRun:

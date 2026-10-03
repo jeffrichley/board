@@ -20,6 +20,12 @@ class Issue:
     kids_completed: int
     kids_total: int
     blocked_by_count: int
+    has_worktree: bool = False
+
+    @property
+    def taken(self) -> bool:
+        """Claimed, or with a worktree: either way, not takeable."""
+        return self.assignee is not None or self.has_worktree
 
     @classmethod
     def from_raw(cls, raw: dict[str, Any]) -> Issue:
@@ -201,11 +207,11 @@ def _group_tickets(
             blocked.append(t)
         elif t.blocked_by_count > 0 and not edges.get(t.number):
             # summary says blocked but no open blockers left — treat as unblocked
-            if t.assignee:
+            if t.taken:
                 claimed.append(t)
             else:
                 takeable.append(t)
-        elif t.assignee:
+        elif t.taken:
             claimed.append(t)
         else:
             takeable.append(t)
@@ -237,8 +243,12 @@ def build_board(
     issues: list[dict[str, Any]],
     children_of: dict[int, list[int]],
     blockers_of: dict[int, list[int]],
+    worktrees: Collection[int] = (),
 ) -> Board:
-    by_num = {i["number"]: Issue.from_raw(i) for i in issues}
+    by_num = {
+        i["number"]: replace(Issue.from_raw(i), has_worktree=i["number"] in worktrees)
+        for i in issues
+    }
     open_nums = set(by_num)
 
     maps_raw = [i for i in issues if MAP_LABEL in labels_of(i)]
@@ -279,20 +289,9 @@ def build_board(
             for b in bs:
                 blocks[b].append(n)
         # Refresh blocked_by_count semantics using open edges for grouping
-        adjusted = []
-        for t in tickets:
-            open_b = edges.get(t.number, [])
-            adjusted.append(
-                Issue(
-                    number=t.number,
-                    title=t.title,
-                    labels=t.labels,
-                    assignee=t.assignee,
-                    kids_completed=t.kids_completed,
-                    kids_total=t.kids_total,
-                    blocked_by_count=len(open_b),
-                )
-            )
+        adjusted = [
+            replace(t, blocked_by_count=len(edges.get(t.number, []))) for t in tickets
+        ]
         group = _group_tickets(adjusted, edges, dict(blocks))
         return ParentNode(
             issue=by_num[num],
