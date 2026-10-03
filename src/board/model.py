@@ -127,7 +127,7 @@ class Board:
                 if p.group.takeable
             ]
 
-        def free(issues: list[Issue]) -> list[Issue]:
+        def takeable_in(issues: list[Issue]) -> list[Issue]:
             return [
                 i
                 for i in issues
@@ -140,10 +140,10 @@ class Board:
             maps=frontiers(self.maps),
             specs=frontiers(self.specs),
             backlog=Backlog(
-                p1=free(b.p1),
-                p2_debt=free(b.p2_debt),
-                ready=free(b.ready),
-                other=free(b.other),
+                p1=takeable_in(b.p1),
+                p2_debt=takeable_in(b.p2_debt),
+                ready=takeable_in(b.ready),
+                other=takeable_in(b.other),
             ),
             filters=(*self.filters, "takeable"),
         )

@@ -203,3 +203,16 @@ def test_a_blocker_with_a_worktree_is_coloured_as_claimed() -> None:
     board = load_board(GhClient(runner=FakeRun(world)), worktrees={2})
     line = next(ln for ln in _render(board, styles=True).splitlines() if "<- " in ln)
     assert re.search(r"\x1b\[(\d;)?33m#2", line)  # yellow, as a claimed one reads
+
+
+def test_takeable_keeps_parents_only_over_takeable_tickets_and_names_it() -> None:
+    text = _render(_one_of_each_lane().takeable())
+    assert "o/r — 4 of 7 open (takeable)" in text
+    assert "#10  " in text and "#11  " in text
+    assert "SPECS" not in text  # its one ticket is claimed
+    assert "#1  " in text and "#2  " in text
+
+
+def test_takeable_follows_the_lanes_in_the_header() -> None:
+    text = _render(_one_of_each_lane().only([Lane.BACKLOG]).takeable())
+    assert "o/r — 2 of 7 open (backlog, takeable)" in text
