@@ -26,12 +26,24 @@ app = typer.Typer(
 )
 err_console = Console(stderr=True)
 
+TakeableOption = Annotated[
+    bool,
+    typer.Option(
+        "--takeable", "-t", help="Show only the tickets board work would start."
+    ),
+]
+
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
+def main(ctx: typer.Context, takeable: TakeableOption = False) -> None:
     """Bare `board` shows the board."""
     if ctx.invoked_subcommand is None:
-        show(lanes=[])
+        show(lanes=[], takeable=takeable)
+    elif takeable:
+        raise typer.BadParameter(
+            f"put it after the command: board {ctx.invoked_subcommand} -t",
+            param_hint="--takeable",
+        )
 
 
 @app.command(short_help="Show the wayfinding / specs / backlog board. (default)")
@@ -45,6 +57,7 @@ def show(
             help="Show only these lanes. None means all three.",
         ),
     ] = [],  # noqa: B006 - Typer reads the default, never mutates it
+    takeable: TakeableOption = False,
 ) -> None:
     """Show the wayfinding / specs / backlog board.
 
@@ -64,7 +77,8 @@ def show(
     except GhError as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
-    render_board(board.only(lanes or Lane))
+    board = board.only(lanes or Lane)
+    render_board(board.takeable() if takeable else board)
 
 
 @app.command()

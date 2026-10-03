@@ -112,6 +112,42 @@ class Board:
             filters=self.filters + tuple(lane for lane in Lane if lane in lanes),
         )
 
+    def takeable(self) -> Board:
+        """This board holding only what `board work` would start a session on.
+
+        A map or spec stays as the heading over its takeable tickets, and goes,
+        note and all, when it has none. A wayfinder ticket with no map is
+        refused by `board work`, so its backlog group goes too.
+        """
+
+        def frontiers(parents: list[ParentNode]) -> list[ParentNode]:
+            return [
+                replace(p, group=TicketGroup(takeable=p.group.takeable))
+                for p in parents
+                if p.group.takeable
+            ]
+
+        def free(issues: list[Issue]) -> list[Issue]:
+            return [
+                i
+                for i in issues
+                if not i.taken and not self.open_blockers.get(i.number)
+            ]
+
+        b = self.backlog
+        return replace(
+            self,
+            maps=frontiers(self.maps),
+            specs=frontiers(self.specs),
+            backlog=Backlog(
+                p1=free(b.p1),
+                p2_debt=free(b.p2_debt),
+                ready=free(b.ready),
+                other=free(b.other),
+            ),
+            filters=(*self.filters, "takeable"),
+        )
+
 
 def labels_of(raw: dict[str, Any]) -> list[str]:
     return [lb["name"] for lb in raw.get("labels", [])]
