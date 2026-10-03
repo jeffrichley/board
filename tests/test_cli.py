@@ -77,3 +77,42 @@ def test_board_reports_a_graphql_error_and_exits_nonzero(
     result = invoke(FakeRun(world), monkeypatch, *args)
     assert result.exit_code == 1
     assert "Could not resolve to a Repository" in result.output
+
+
+def test_board_show_takes_lanes_in_any_case_and_order_and_once_each(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = gh_world(raw_issue(7, "ready-for-agent"), raw_issue(8, "P1"))
+    named = invoke(
+        FakeRun(world), monkeypatch, "show", "backlog", "WAYFINDING", "Backlog"
+    )
+    assert named.exit_code == 0
+    assert "o/r — 2 of 2 open (wayfinding, backlog)" in plain(named.stdout)
+    assert "issue 7" in named.stdout
+
+
+def test_board_show_with_no_lanes_shows_the_whole_board(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = invoke(FakeRun(gh_world(raw_issue(7))), monkeypatch, "show")
+    assert "o/r — 1 open" in plain(result.stdout)
+
+
+def test_board_show_refuses_an_unknown_lane_before_fetching_anything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({})
+    result = invoke(run, monkeypatch, "show", "backlog", "todo")
+    assert result.exit_code == 2
+    assert run.calls == []
+    message = plain(result.output)
+    assert "todo" in message
+    for lane in ("wayfinding", "specs", "backlog"):
+        assert lane in message
+
+
+def test_bare_board_takes_no_lanes(monkeypatch: pytest.MonkeyPatch) -> None:
+    run = FakeRun({})
+    result = invoke(run, monkeypatch, "backlog")
+    assert result.exit_code == 2
+    assert run.calls == []

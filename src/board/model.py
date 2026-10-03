@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 
 MAP_LABEL = "wayfinder:map"
@@ -61,6 +62,22 @@ class Backlog:
     other: list[Issue] = field(default_factory=list)
 
 
+class Lane(StrEnum):
+    """The board's three lanes, in the order it shows them."""
+
+    WAYFINDING = "wayfinding"
+    SPECS = "specs"
+    BACKLOG = "backlog"
+
+
+def _tickets_under(parents: list[ParentNode]) -> int:
+    """The parents, each with the tickets beneath it."""
+    return sum(
+        1 + len(g.takeable) + len(g.claimed) + len(g.blocked)
+        for g in (p.group for p in parents)
+    )
+
+
 @dataclass
 class Board:
     slug: str
@@ -69,6 +86,14 @@ class Board:
     specs: list[ParentNode]
     backlog: Backlog
     open_blockers: dict[int, list[int]] = field(default_factory=dict)
+
+    def count(self, lane: Lane) -> int:
+        """How many tickets `lane` holds. Each open ticket sits in exactly one."""
+        if lane is Lane.WAYFINDING:
+            return _tickets_under(self.maps)
+        if lane is Lane.SPECS:
+            return _tickets_under(self.specs)
+        return sum(len(group) for group in vars(self.backlog).values())
 
 
 def labels_of(raw: dict[str, Any]) -> list[str]:
