@@ -206,3 +206,75 @@ def test_board_reports_worktrees_it_cannot_list_and_exits_nonzero(
     assert result.exit_code == 1
     assert "could not list worktrees" in result.output
     assert "not a git repository" in result.output
+
+
+# Something of every kind in every lane. Takeable: #11 under map #10, #31 under
+# spec #30, and #1 and #6 in the backlog. Everything else is taken, blocked, a map
+# or spec with nothing takeable, or (#5) a wayfinder ticket with no map to work it.
+EVERY_KIND = [
+    *(raw_issue(n, "wayfinder:map") for n in (10, 20, 50)),
+    raw_issue(11),
+    raw_issue(12, assignee="jeff"),
+    raw_issue(13),
+    raw_issue(21, assignee="jeff"),
+    *(raw_issue(n) for n in (30, 31, 32, 40, 41)),
+    raw_issue(1, "P1"),
+    raw_issue(2, "P1", assignee="jeff"),
+    raw_issue(3),
+    raw_issue(4, "ready-for-agent"),
+    raw_issue(5, "wayfinder:decision"),
+    raw_issue(6, "P2"),
+]
+EVERY_KIND_WORLD = shown(
+    *EVERY_KIND,
+    worktrees=(4, 32),
+    children={10: [11, 12, 13], 20: [21], 30: [31, 32], 40: [41]},
+    blockers={13: [11], 41: [1], 3: [1]},
+)
+
+
+def numbers(output: str) -> set[int]:
+    """Every ticket number a rendered board lists, headings among them."""
+    return {int(n) for n in re.findall(r"#(\d+)  ", plain(output))}
+
+
+@pytest.mark.parametrize("flag", ["--takeable", "-t"])
+def test_takeable_shows_only_takeable_tickets_under_the_parents_that_hold_them(
+    flag: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result = invoke(FakeRun(EVERY_KIND_WORLD), monkeypatch, "show", flag)
+    assert result.exit_code == 0
+    assert numbers(result.output) == {10, 11, 30, 31, 1, 6}
+    text = plain(result.output)
+    assert "o/r — 6 of 18 open (takeable)" in text
+    for gone in ("CLAIMED", "BLOCKED", "frontier clear", "ready-for-agent"):
+        assert gone not in text
+    assert "orphan wayfinder" not in text
+
+
+def test_bare_board_takeable_is_board_show_takeable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bare = invoke(FakeRun(EVERY_KIND_WORLD), monkeypatch, "-t")
+    show = invoke(FakeRun(EVERY_KIND_WORLD), monkeypatch, "show", "-t")
+    assert "issue 31" in show.output
+    assert (bare.exit_code, bare.output) == (show.exit_code, show.output)
+
+
+def test_takeable_with_lanes_narrows_by_both_and_names_both(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = invoke(FakeRun(EVERY_KIND_WORLD), monkeypatch, "show", "-t", "backlog")
+    assert result.exit_code == 0
+    assert numbers(result.output) == {1, 6}
+    assert "o/r — 2 of 18 open (backlog, takeable)" in plain(result.output)
+
+
+def test_takeable_before_a_command_is_refused_before_fetching_anything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun({})
+    result = invoke(run, monkeypatch, "-t", "show")
+    assert result.exit_code == 2
+    assert run.calls == []
+    assert "board show -t" in plain(result.output)
