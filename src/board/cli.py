@@ -54,7 +54,7 @@ def show(
     except GhError as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
-    render_board(board, lanes=tuple(lanes) or tuple(Lane))
+    render_board(board.only(lanes or Lane))
 
 
 @app.command()

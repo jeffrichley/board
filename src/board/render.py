@@ -7,7 +7,6 @@ from rich.tree import Tree
 from board.model import (
     Board,
     Issue,
-    Lane,
     ParentNode,
     blocker_status,
     direct_blockers,
@@ -105,40 +104,33 @@ def _add_parent(tree: Tree, parent: ParentNode, title_style: str) -> None:
             sub.add(_ticket_line(issue, kind="blocked", parent=parent))
 
 
-def _header(board: Board, shown: int, filters: list[str]) -> str:
-    """The repo and what's open in it: `N of M open (filters)` when filtered."""
-    if not filters:
-        return f"[bold]{board.slug}[/bold] — {board.open_count} open"
-    of = f"{shown} of {board.open_count} open"
-    return f"[bold]{board.slug}[/bold] — {of} ({', '.join(filters)})"
+def _header(board: Board) -> str:
+    """The repo and what's open in it: `N of M open (filters)` once narrowed."""
+    head = f"[bold]{board.slug}[/bold] — "
+    if not board.filters:
+        return head + f"{board.open_count} open"
+    of = f"{board.ticket_count()} of {board.open_count} open"
+    return head + f"{of} ({', '.join(board.filters)})"
 
 
-def render_board(
-    board: Board,
-    console: Console | None = None,
-    lanes: tuple[Lane, ...] = tuple(Lane),
-) -> None:
-    """Print `board`, showing only `lanes`: every lane unless told otherwise."""
+def render_board(board: Board, console: Console | None = None) -> None:
     console = console or Console()
     if board.open_count == 0:
         console.print(f"[bold]{board.slug}[/bold] — no open issues")
         return
 
-    chosen = [lane for lane in Lane if lane in lanes]
-    shown = sum(board.count(lane) for lane in chosen)
-    filters: list[str] = [] if chosen == list(Lane) else list(chosen)
     console.print()
-    console.print(_header(board, shown, filters))
+    console.print(_header(board))
     console.print()
 
-    if board.maps and Lane.WAYFINDING in lanes:
+    if board.maps:
         root = Tree(Text("WAYFINDING", style="bold cyan"))
         for p in board.maps:
             _add_parent(root, p, "magenta")
         console.print(root)
         console.print()
 
-    if board.specs and Lane.SPECS in lanes:
+    if board.specs:
         root = Tree(Text("SPECS", style="bold cyan"))
         for p in board.specs:
             _add_parent(root, p, "blue")
@@ -153,7 +145,7 @@ def render_board(
         ("orphan wayfinder", "bold yellow", b.orphan_wayfinder, True),
         ("other", "dim", b.other, True),
     ]
-    if Lane.BACKLOG in lanes and any(issues for _, _, issues, _ in groups):
+    if any(issues for _, _, issues, _ in groups):
         root = Tree(Text("BACKLOG", style="bold cyan"))
         for name, style, issues, show_labels in groups:
             if issues:

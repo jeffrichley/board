@@ -163,35 +163,30 @@ def test_an_unfiltered_board_counts_only_what_is_open() -> None:
 
 
 def test_a_lane_filter_shows_only_that_lane_and_counts_it_against_the_repo() -> None:
-    console = Console(record=True, width=120, force_terminal=True)
-    render_board(_one_of_each_lane(), console=console, lanes=(Lane.BACKLOG,))
-    text = console.export_text()
+    text = _render(_one_of_each_lane().only([Lane.BACKLOG]))
     assert "o/r — 2 of 7 open (backlog)" in text
     assert "BACKLOG" in text and "#1  " in text
     assert "WAYFINDING" not in text and "SPECS" not in text
 
 
 def test_lanes_render_in_board_order_and_count_their_parents() -> None:
-    console = Console(record=True, width=120, force_terminal=True)
-    render_board(
-        _one_of_each_lane(), console=console, lanes=(Lane.WAYFINDING, Lane.SPECS)
-    )
-    text = console.export_text()
+    text = _render(_one_of_each_lane().only([Lane.SPECS, Lane.WAYFINDING]))
     assert "o/r — 4 of 7 open (wayfinding, specs)" in text
     assert text.index("WAYFINDING") < text.index("SPECS")
     assert "BACKLOG" not in text
 
 
+def test_every_lane_is_no_filter_at_all() -> None:
+    board = _one_of_each_lane()
+    assert _render(board.only(list(Lane))) == _render(board)
+
+
 def test_a_filter_that_matches_nothing_still_prints_its_header() -> None:
     board = _one_of_each_lane()
     board.specs = []
-    console = Console(record=True, width=120, force_terminal=True)
-    render_board(board, console=console, lanes=(Lane.SPECS,))
-    assert console.export_text().strip() == "o/r — 0 of 7 open (specs)"
+    assert _render(board.only([Lane.SPECS])).strip() == "o/r — 0 of 7 open (specs)"
 
 
 def test_a_repo_with_no_open_issues_says_so_whatever_the_filter() -> None:
     board = Board(slug="o/r", open_count=0, maps=[], specs=[], backlog=Backlog())
-    console = Console(record=True, width=120, force_terminal=True)
-    render_board(board, console=console, lanes=(Lane.SPECS,))
-    assert console.export_text().strip() == "o/r — no open issues"
+    assert _render(board.only([Lane.SPECS])).strip() == "o/r — no open issues"
